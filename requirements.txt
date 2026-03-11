@@ -3,3 +3,6 @@ uvicorn
 passlib[bcrypt]
 pyjwt
 python-multipart
+python-dotenv
+sqlalchemy
+pymysql
