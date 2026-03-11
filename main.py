@@ -20,14 +20,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Config — change these to match your MySQL setup ────────────────────────
+# ── Config — MySQL setup ────────────────────────
 DB_USER     = "root"
 DB_PASSWORD = "m0mo277&" 
 DB_HOST     = "localhost"
 DB_PORT     = "3306"
 DB_NAME     = "ofs_db"
 
-JWT_SECRET       = "your-secret-key-change-in-production"  # <-- change this
+JWT_SECRET       = ""  # <-- change this later
 JWT_EXPIRY_HOURS = 24
 
 # ── Database connection ─────────────────────────────────────────────────────
@@ -80,6 +80,7 @@ class RegisterRequest(BaseModel):
 
 # ── Routes ──────────────────────────────────────────────────────────────────
 
+# Runs when user clicks "Create Account"
 @app.post("/api/auth/register")
 def register(body: RegisterRequest, db: Session = Depends(get_db)):
     existing = db.execute(
@@ -100,7 +101,7 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Registration successful"}
 
-
+# Runs when user clicks "Sign in"
 @app.post("/api/auth/login")
 def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
     user = db.execute(
@@ -123,13 +124,13 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
 
     return {"message": "Login successful", "role": user.role, "name": user.name}
 
-
+# Runs when user logs out
 @app.post("/api/auth/logout")
 def logout(response: Response):
     response.delete_cookie("auth_token")
     return {"message": "Logged out"}
 
-
+# Runs when frontend checks logged in user
 @app.get("/api/auth/me")
 def get_me(auth_token: Optional[str] = Cookie(default=None), db: Session = Depends(get_db)):
     if not auth_token:
@@ -147,7 +148,7 @@ def get_me(auth_token: Optional[str] = Cookie(default=None), db: Session = Depen
 
     return {"userId": user.id, "name": user.name, "email": user.email, "role": user.role}
 
-
+# Check that database & server running
 @app.get("/api/health")
 def health(db: Session = Depends(get_db)):
     """Quick sanity check — confirms server and DB are both reachable."""
