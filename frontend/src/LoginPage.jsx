@@ -9,9 +9,25 @@ async function apiPost(path, body) {
     credentials: "include",
     body: JSON.stringify(body),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.detail || "Request failed");
-  return data;
+
+  // Read as text first, then try JSON
+  const text = await res.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    // not JSON, keep text
+  }
+
+  if (!res.ok) {
+    const msg =
+      (data && (data.detail || data.message)) ||
+      text ||
+      `Request failed (${res.status})`;
+    throw new Error(msg);
+  }
+
+  return data ?? {};
 }
 
 export default function LoginPage() {
@@ -475,6 +491,7 @@ export default function LoginPage() {
                       onChange={e => setPassword(e.target.value)}
                       required
                       minLength={6}
+                      maxLength={72}
                     />
                     <span className="input-icon">🔒</span>
                   </div>

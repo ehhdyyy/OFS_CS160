@@ -125,3 +125,5 @@ INSERT INTO inventory (product_id, quantity) VALUES (1,50),(2,80),(3,30),(4,20),
 
 -- Seed one robot
 INSERT INTO robots (name, status, battery_pct) VALUES ('Robot-01', 'available', 100);
+
+SELECT * FROM users;
