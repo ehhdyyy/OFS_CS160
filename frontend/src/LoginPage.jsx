@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const API_BASE = "http://localhost:8000";
 
@@ -39,6 +40,8 @@ export default function LoginPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
+  const navigate = useNavigate();
+
   async function handleLogin(e) {
     e.preventDefault();
     setErrorMessage("");
@@ -46,9 +49,9 @@ export default function LoginPage() {
     try {
       const data = await apiPost("/api/auth/login", { email, password });
       if (data.role === "admin") {
-        window.location.href = "/admin";
+        navigate("/admin");
       } else {
-        window.location.href = "/home";
+        navigate("/home");
       }
     } catch (err) {
       setErrorMessage(err.message);
@@ -76,339 +79,411 @@ export default function LoginPage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+      /* PAGE LAYOUT */
+      .page-body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: calc(100vh - 74px);
+        padding: 3rem 1.5rem;
+      }
 
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      .card {
+        position: relative;
+        display: grid;
+        grid-template-columns: 1.05fr 0.95fr;
+        width: 100%;
+        max-width: 1120px;
+        background: rgba(255, 255, 255, 0.88);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        border-radius: 28px;
+        overflow: hidden;
+        box-shadow: var(--shadow-lg);
+        min-height: 640px;
+      }
 
-        :root {
-          --green: #2ebd4e;
-          --green-dark: #25a341;
-          --text-dark: #1a1a1a;
-          --text-mid: #555;
-          --text-light: #888;
-          --border: #e0e0e0;
-          --bg: #f0f2f0;
-          --white: #ffffff;
-        }
+      /* LEFT PANEL */
+      .panel-left {
+        position: relative;
+        background:
+          radial-gradient(circle at top left, rgba(255,255,255,0.22), transparent 32%),
+          radial-gradient(circle at bottom right, rgba(245,158,11,0.18), transparent 26%),
+          linear-gradient(145deg, #22c55e 0%, #16a34a 100%);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 3.2rem;
+        overflow: hidden;
+        align-items:center;
+      }
 
-        body {
-          font-family: 'Inter', sans-serif;
-          background: var(--bg);
-          min-height: 100vh;
-        }
+      .panel-left::before,
+      .panel-left::after {
+        content: "";
+        position: absolute;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.08);
+      }
 
-        .navbar {
-          background: var(--bg);
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 0 2.5rem;
-          height: 60px;
-          border-bottom: 1px solid #ddd;
-        }
+      .panel-left::before {
+        width: 240px;
+        height: 240px;
+        top: -60px;
+        right: -80px;
+      }
 
-        .navbar-logo {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          text-decoration: none;
-        }
+      .panel-left::after {
+        width: 180px;
+        height: 180px;
+        bottom: -50px;
+        left: -40px;
+      }
 
-        .logo-icon {
-          width: 36px; height: 36px;
-          background: var(--green);
-          border-radius: 8px;
-          display: flex; align-items: center; justify-content: center;
-          font-size: 1rem;
-        }
+      .grocery-img-wrap {
+        position: relative;
+        width: 100%;
+        max-width: 390px;
+        aspect-ratio: 1 / 1;
+        background: rgba(255,255,255,0.14);
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 6.5rem;
+        margin-bottom: 2rem;
+        overflow: hidden;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 16px 40px rgba(0,0,0,0.12);
+      }
 
-        .logo-text {
-          font-size: 1.25rem;
-          font-weight: 700;
-          color: var(--text-dark);
-        }
+      .grocery-img-wrap img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 28px;
+      }
 
-        .navbar-links {
-          display: flex;
-          gap: 2.5rem;
-          list-style: none;
-        }
+      .panel-left h2 {
+        font-size: 2.25rem;
+        line-height: 1.1;
+        font-weight: 800;
+        color: var(--white);
+        letter-spacing: -0.03em;
+        margin-bottom: 0.9rem;
+        max-width: 460px;
+        text-align:center;
+      }
 
-        .navbar-links a {
-          text-decoration: none;
-          color: var(--text-mid);
-          font-size: 0.93rem;
-        }
+      .panel-left p {
+        font-size: 1rem;
+        color: rgba(255,255,255,0.88);
+        line-height: 1.75;
+        max-width: 430px;
+        text-align:center;
+      }
 
-        .navbar-links a:hover { color: var(--text-dark); }
 
-        .page-body {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          min-height: calc(100vh - 60px);
-          padding: 2rem;
-        }
+      /* RIGHT PANEL */
+      .panel-right {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 3.5rem 3rem;
+        background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.88));
+      }
 
+      .form-inner {
+        width: 100%;
+        max-width: 380px;
+      }
+
+      .form-inner h1 {
+        font-size: 3rem;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        color: var(--text-dark);
+        margin-bottom: 0.45rem;
+        text-align:center;
+      }
+
+      .form-sub {
+        font-size: 0.95rem;
+        color: var(--text-mid);
+        line-height: 1.6;
+        margin-bottom: 2rem;
+      }
+
+      .field {
+        margin-bottom: 1.1rem;
+      }
+
+      .field label {
+        display: block;
+        font-size: 0.84rem;
+        font-weight: 600;
+        color: var(--text-dark);
+        margin-bottom: 0.5rem;
+      }
+
+      .input-wrap {
+        position: relative;
+      }
+
+      .input-wrap input {
+        width: 100%;
+        padding: 0.95rem 2.75rem 0.95rem 1rem;
+        border: 1.5px solid var(--border);
+        border-radius: 14px;
+        font-family: 'Inter', sans-serif;
+        font-size: 0.95rem;
+        color: var(--text-dark);
+        background: #fff;
+        outline: none;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+        box-shadow: var(--shadow-sm);
+      }
+
+      .input-wrap input::placeholder {
+        color: #b4bcc8;
+      }
+
+      .input-wrap input:focus {
+        border-color: rgba(34, 197, 94, 0.65);
+        box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+        transform: translateY(-1px);
+      }
+
+      .input-icon {
+        position: absolute;
+        right: 0.95rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #b0b8c5;
+        font-size: 0.95rem;
+        pointer-events: none;
+      }
+
+      .row-extras {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin: 0.4rem 0 1.3rem;
+        gap: 1rem;
+      }
+
+      .remember {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.84rem;
+        color: var(--text-mid);
+        cursor: pointer;
+      }
+
+      .remember input[type="checkbox"] {
+        accent-color: var(--green);
+        width: 15px;
+        height: 15px;
+      }
+
+      .forgot {
+        font-size: 0.84rem;
+        color: var(--green-dark);
+        font-weight: 600;
+        cursor: pointer;
+        background: none;
+        border: none;
+        padding: 0;
+        font-family: 'Inter', sans-serif;
+        transition: opacity 0.18s ease;
+      }
+
+      .forgot:hover {
+        opacity: 0.8;
+        text-decoration: underline;
+      }
+
+      .error-box {
+        background: #fff5f5;
+        border: 1px solid #fecaca;
+        border-radius: 14px;
+        padding: 0.8rem 0.95rem;
+        font-size: 0.84rem;
+        color: #b91c1c;
+        margin-bottom: 1rem;
+      }
+
+      .btn-primary {
+        width: 100%;
+        padding: 0.95rem 1rem;
+        background: linear-gradient(135deg, var(--green), var(--green-dark));
+        color: var(--white);
+        border: none;
+        border-radius: 14px;
+        font-family: 'Inter', sans-serif;
+        font-size: 0.98rem;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        cursor: pointer;
+        transition: transform 0.16s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+        box-shadow: 0 12px 24px rgba(34, 197, 94, 0.24);
+      }
+
+      .btn-primary:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 16px 28px rgba(34, 197, 94, 0.28);
+      }
+
+      .btn-primary:active:not(:disabled) {
+        transform: translateY(0);
+      }
+
+      .btn-primary:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .divider {
+        display: flex;
+        align-items: center;
+        gap: 0.85rem;
+        margin: 1.4rem 0;
+        color: var(--text-light);
+        font-size: 0.8rem;
+        font-weight: 500;
+      }
+
+      .divider::before,
+      .divider::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(to right, transparent, var(--border), transparent);
+      }
+
+      .social-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+        margin-bottom: 1.25rem;
+      }
+
+      .btn-social {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 0.82rem;
+        border: 1.5px solid var(--border);
+        border-radius: 14px;
+        background: rgba(255,255,255,0.92);
+        font-family: 'Inter', sans-serif;
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: var(--text-dark);
+        cursor: pointer;
+        transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+        box-shadow: var(--shadow-sm);
+      }
+
+      .btn-social:hover {
+        transform: translateY(-2px);
+        border-color: rgba(17, 24, 39, 0.16);
+        box-shadow: var(--shadow-md);
+      }
+
+      .g-letter {
+        font-weight: 800;
+        background: linear-gradient(135deg, #4285f4, #ea4335, #fbbc04, #34a853);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        font-size: 1rem;
+      }
+
+      .fb-letter {
+        color: #1877f2;
+        font-weight: 800;
+        font-size: 1.05rem;
+      }
+
+      .switch-mode {
+        text-align: center;
+        font-size: 0.88rem;
+        color: var(--text-mid);
+        margin-top: 1.4rem;
+      }
+
+      .switch-mode span {
+        color: var(--green-dark);
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .switch-mode span:hover {
+        text-decoration: underline;
+      }
+
+      /* RESPONSIVE */
+      @media (max-width: 920px) {
         .card {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          width: 100%;
-          max-width: 960px;
-          background: var(--white);
-          border-radius: 16px;
-          overflow: hidden;
-          box-shadow: 0 4px 28px rgba(0,0,0,0.10);
-          min-height: 560px;
+          grid-template-columns: 1fr;
+          max-width: 620px;
         }
 
         .panel-left {
-          background: var(--green);
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: flex-end;
-          padding: 2rem 2.5rem 2.8rem;
+          min-height: 360px;
+          padding: 2.5rem 2rem;
         }
 
         .grocery-img-wrap {
-          width: 88%;
-          max-width: 320px;
-          aspect-ratio: 4/3;
-          background: rgba(255,255,255,0.18);
-          border-radius: 14px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 6rem;
-          margin-bottom: 1.6rem;
-          overflow: hidden;
-        }
-
-        /* If you have the actual image, swap the emoji for an <img> tag */
-        .grocery-img-wrap img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          border-radius: 14px;
+          max-width: 280px;
+          margin-bottom: 1.5rem;
         }
 
         .panel-left h2 {
-          font-size: 1.55rem;
-          font-weight: 700;
-          color: var(--white);
-          text-align: center;
-          margin-bottom: 0.6rem;
+          font-size: 1.85rem;
+        }
+      }
+
+      @media (max-width: 680px) {
+        .navbar {
+          padding: 0 1.2rem;
+          height: 68px;
         }
 
-        .panel-left p {
-          font-size: 0.87rem;
-          color: rgba(255,255,255,0.85);
-          text-align: center;
-          line-height: 1.6;
-          max-width: 240px;
+        .navbar-links {
+          display: none;
+        }
+
+        .page-body {
+          padding: 1.25rem;
+          min-height: calc(100vh - 68px);
+        }
+
+        .card {
+          border-radius: 22px;
+          min-height: auto;
+        }
+
+        .panel-left {
+          display: none;
         }
 
         .panel-right {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 3rem 3rem;
-        }
-
-        .form-inner {
-          width: 100%;
-          max-width: 340px;
+          padding: 2rem 1.35rem;
         }
 
         .form-inner h1 {
-          font-size: 1.6rem;
-          font-weight: 700;
-          color: var(--text-dark);
-          margin-bottom: 0.3rem;
-        }
-
-        .form-sub {
-          font-size: 0.87rem;
-          color: var(--text-light);
-          margin-bottom: 1.8rem;
-        }
-
-        .field { margin-bottom: 1rem; }
-
-        .field label {
-          display: block;
-          font-size: 0.82rem;
-          font-weight: 500;
-          color: var(--text-dark);
-          margin-bottom: 0.4rem;
-        }
-
-        .input-wrap { position: relative; }
-
-        .input-wrap input {
-          width: 100%;
-          padding: 0.72rem 2.4rem 0.72rem 0.85rem;
-          border: 1.5px solid var(--border);
-          border-radius: 8px;
-          font-family: 'Inter', sans-serif;
-          font-size: 0.9rem;
-          color: var(--text-dark);
-          background: var(--white);
-          outline: none;
-          transition: border-color 0.18s;
-        }
-
-        .input-wrap input::placeholder { color: #bbb; }
-        .input-wrap input:focus { border-color: var(--green); }
-
-        .input-icon {
-          position: absolute;
-          right: 0.8rem;
-          top: 50%;
-          transform: translateY(-50%);
-          color: #ccc;
-          font-size: 0.95rem;
-          pointer-events: none;
-        }
-
-        .row-extras {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin: 0.2rem 0 1.2rem;
-        }
-
-        .remember {
-          display: flex;
-          align-items: center;
-          gap: 7px;
-          font-size: 0.82rem;
-          color: var(--text-mid);
-          cursor: pointer;
-        }
-
-        .remember input[type="checkbox"] {
-          accent-color: var(--green);
-          width: 14px; height: 14px;
-        }
-
-        .forgot {
-          font-size: 0.82rem;
-          color: var(--green);
-          font-weight: 500;
-          cursor: pointer;
-          background: none;
-          border: none;
-          padding: 0;
-          font-family: 'Inter', sans-serif;
-        }
-
-        .forgot:hover { text-decoration: underline; }
-
-        .error-box {
-          background: #fff0f0;
-          border: 1px solid #f5c6c6;
-          border-radius: 8px;
-          padding: 0.65rem 0.85rem;
-          font-size: 0.82rem;
-          color: #c0392b;
-          margin-bottom: 0.9rem;
-        }
-
-        .btn-primary {
-          width: 100%;
-          padding: 0.82rem;
-          background: var(--green);
-          color: var(--white);
-          border: none;
-          border-radius: 8px;
-          font-family: 'Inter', sans-serif;
-          font-size: 0.97rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: background 0.18s;
-        }
-
-        .btn-primary:hover:not(:disabled) { background: var(--green-dark); }
-        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-
-        .divider {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          margin: 1.1rem 0;
-          color: var(--text-light);
-          font-size: 0.8rem;
-        }
-
-        .divider::before, .divider::after {
-          content: '';
-          flex: 1;
-          height: 1px;
-          background: var(--border);
+          font-size: 1.7rem;
         }
 
         .social-row {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 0.65rem;
-          margin-bottom: 1.2rem;
+          grid-template-columns: 1fr;
         }
-
-        .btn-social {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 7px;
-          padding: 0.6rem;
-          border: 1.5px solid var(--border);
-          border-radius: 8px;
-          background: var(--white);
-          font-family: 'Inter', sans-serif;
-          font-size: 0.85rem;
-          font-weight: 500;
-          color: var(--text-dark);
-          cursor: pointer;
-          transition: border-color 0.15s;
-        }
-
-        .btn-social:hover { border-color: #aaa; }
-
-        .g-letter {
-          font-weight: 700;
-          background: linear-gradient(135deg, #4285f4, #ea4335, #fbbc04, #34a853);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-          font-size: 1rem;
-        }
-
-        .fb-letter {
-          color: #1877f2;
-          font-weight: 700;
-          font-size: 1.05rem;
-        }
-
-        .switch-mode {
-          text-align: center;
-          font-size: 0.84rem;
-          color: var(--text-mid);
-        }
-
-        .switch-mode span {
-          color: var(--green);
-          font-weight: 600;
-          cursor: pointer;
-        }
-
-        .switch-mode span:hover { text-decoration: underline; }
-
-        @media (max-width: 680px) {
-          .card { grid-template-columns: 1fr; }
-          .panel-left { display: none; }
-          .panel-right { padding: 2rem 1.5rem; }
-        }
+      }
       `}</style>
 
       {/* Navbar */}
@@ -468,11 +543,11 @@ export default function LoginPage() {
                 )}
 
                 <div className="field">
-                  <label>Email or Username</label>
+                  <label>Email</label>
                   <div className="input-wrap">
                     <input
                       type="email"
-                      placeholder="Enter your email or username"
+                      placeholder="Enter your email"
                       value={email}
                       onChange={e => setEmail(e.target.value)}
                       required
@@ -518,7 +593,7 @@ export default function LoginPage() {
                 </button>
               </form>
 
-              {mode === "login" && (
+              {/* {mode === "login" && (
                 <>
                   <div className="divider">Or continue with</div>
                   <div className="social-row">
@@ -530,7 +605,7 @@ export default function LoginPage() {
                     </button>
                   </div>
                 </>
-              )}
+              )} */}
 
               <div className="switch-mode">
                 {mode === "login" ? (
@@ -549,7 +624,6 @@ export default function LoginPage() {
               </div>
             </div>
           </div>
-
         </div>
       </div>
     </>

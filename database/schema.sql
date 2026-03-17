@@ -23,7 +23,7 @@ CREATE TABLE products (
     price       DECIMAL(10, 2) NOT NULL,
     weight_lbs  DECIMAL(6, 2) NOT NULL,
     category    VARCHAR(100),
-    is_organic  BOOLEAN DEFAULT TRUE,
+    is_available  BOOLEAN DEFAULT TRUE,
     image_url   VARCHAR(500),
     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -126,4 +126,3 @@ INSERT INTO inventory (product_id, quantity) VALUES (1,50),(2,80),(3,30),(4,20),
 -- Seed one robot
 INSERT INTO robots (name, status, battery_pct) VALUES ('Robot-01', 'available', 100);
 
-SELECT * FROM users;

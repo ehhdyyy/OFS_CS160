@@ -128,6 +128,31 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
 
     return {"message": "Login successful", "role": user.role, "name": user.name}
 
+#Runs when frontend loads products
+@app.get("/api/products")
+def get_products(db: Session = Depends(get_db)):
+    products = db.execute(
+        text("""
+                SELECT id, name, description, price, weight_lbs, category, is_available
+                FROM products
+             """)
+    ).fetchall()
+    return [
+        {
+            "id": p.id,
+            "name": p.name,
+            "description": p.description,
+            "price": float(p.price),
+            "weight_lbs": float(p.weight_lbs),
+            "category": p.category,
+            "is_available": p.is_available,
+
+        }
+        for p in products
+    ]
+
+
+
 # Runs when user logs out
 @app.post("/api/auth/logout")
 def logout(response: Response):
