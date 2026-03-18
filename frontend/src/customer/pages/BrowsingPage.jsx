@@ -83,7 +83,9 @@ export default function BrowsingPage() {
         }
 
         const data = await response.json();
-        setProducts(Array.isArray(data) ? data : []);
+        // API now returns { items, total, page, per_page }
+        const items = Array.isArray(data) ? data : (Array.isArray(data.items) ? data.items : []);
+        setProducts(items);
       } catch (error) {
         setErrorMessage(error.message || 'Failed to load products');
       } finally {
@@ -197,7 +199,6 @@ export default function BrowsingPage() {
       cartTotal + deliveryFee
     ), [cartTotal, deliveryFee])
 
-  console.log(cart)
   return (
     <>
       <nav className="customer-navbar">
@@ -406,7 +407,7 @@ export default function BrowsingPage() {
           ) : (
             <div className="customer-product-grid">
               {filteredProducts.map((product) => (
-                <div className="customer-product-card" key={product.id}>
+                <div className="customer-product-card" key={product.id} onClick={() => { window.location.href = `/product/${product.id}`; }} style={{ cursor: 'pointer' }}>
                   <img src={getFallbackImage(product)} alt={product.name} />
                   <p className="customer-product-category">{product.category}</p>
                   <h3>{product.name}</h3>
@@ -415,7 +416,7 @@ export default function BrowsingPage() {
                     <span className="customer-product-price">${Number(product.price).toFixed(2)}</span>
                     <button
                       type="button"
-                      onClick={() => addToCart(product)}
+                      onClick={(e) => { e.stopPropagation(); addToCart(product); }}
                       disabled={!product.is_available}
                       title={product.is_available ? 'Add to cart' : 'Out of stock'}
                     >

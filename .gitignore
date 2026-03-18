@@ -4,4 +4,10 @@ __pycache__/
 .env
 frontend/node_modules/
 frontend/dist/
-venv
+venv/
+.pytest_cache/
+.DS_Store
+
+# Non-project files
+instructions/
+mockups/

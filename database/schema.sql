@@ -108,6 +108,69 @@ CREATE TABLE revenue (
     FOREIGN KEY (order_id) REFERENCES orders(id)
 );
 
+-- Shopping Cart (one active cart per user)
+CREATE TABLE cart (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    user_id     INT NOT NULL UNIQUE,
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Cart Items
+CREATE TABLE cart_items (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    cart_id     INT NOT NULL,
+    product_id  INT NOT NULL,
+    quantity    INT NOT NULL DEFAULT 1 CHECK (quantity >= 1),
+    added_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (cart_id) REFERENCES cart(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_cart_product (cart_id, product_id)
+);
+
+-- Delivery Schedules
+CREATE TABLE schedules (
+    id                INT AUTO_INCREMENT PRIMARY KEY,
+    robot_id          INT NOT NULL,
+    scheduled_date    DATE NOT NULL,
+    time_window       VARCHAR(50) NOT NULL,
+    max_orders        INT NOT NULL DEFAULT 10,
+    max_weight_lbs    DECIMAL(6, 2) NOT NULL DEFAULT 200.00,
+    current_orders    INT NOT NULL DEFAULT 0,
+    current_weight    DECIMAL(6, 2) NOT NULL DEFAULT 0.00,
+    status            ENUM('open', 'full', 'dispatched', 'completed') DEFAULT 'open',
+    created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (robot_id) REFERENCES robots(id)
+);
+
+-- Routes (computed delivery route info)
+CREATE TABLE routes (
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    delivery_id     INT NOT NULL UNIQUE,
+    origin_lat      DECIMAL(9, 6) NOT NULL,
+    origin_lng      DECIMAL(9, 6) NOT NULL,
+    waypoints_json  JSON,
+    distance_miles  DECIMAL(6, 2),
+    estimated_mins  INT,
+    polyline        TEXT,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE CASCADE
+);
+
+-- Status History (order status audit trail)
+CREATE TABLE status_history (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    order_id    INT NOT NULL,
+    old_status  VARCHAR(50),
+    new_status  VARCHAR(50) NOT NULL,
+    changed_by  INT,
+    changed_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    note        VARCHAR(255),
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (changed_by) REFERENCES users(id)
+);
+
 -- Seed data: test users
 INSERT INTO users (name, email, password_hash, role) VALUES
     ('Lucas',      'customer@ofs.com', '$2b$12$placeholder_hash_customer', 'customer'),
