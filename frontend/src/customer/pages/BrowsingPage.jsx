@@ -144,6 +144,7 @@ export default function BrowsingPage() {
           name: product.name,
           price: Number(product.price),
           qty: 1,
+          weight_lbs: product.weight_lbs
         },
       ];
     });
@@ -184,6 +185,19 @@ export default function BrowsingPage() {
     cart.reduce((total, item) => total + item.price * item.qty, 0)
   ), [cart]);
 
+  const weightTotal = useMemo(() => (
+    cart.reduce((total, item) => total + Number(item.weight_lbs || 0) * Number(item.qty || 0), 0)
+  ), [cart]);
+
+  const deliveryFee = useMemo(() => (
+    weightTotal > 20 ? 10 : 0  
+  ), [weightTotal])
+
+  const finalTotal = useMemo(() => (
+      cartTotal + deliveryFee
+    ), [cartTotal, deliveryFee])
+
+  console.log(cart)
   return (
     <>
       <nav className="customer-navbar">
@@ -413,7 +427,11 @@ export default function BrowsingPage() {
                   <div className="customer-cart-row" key={item.id}>
                     <div>
                       <p className="customer-cart-product-name">{item.name}</p>
-                      <p className="customer-cart-product-price">${(item.price * item.qty).toFixed(2)}</p>
+                      <p className="customer-cart-product-price">
+                        ${item.price} each · ${(item.price * item.qty).toFixed(2)}</p>
+                      <p className="customer-cart-product-weight">
+                        {item.weight_lbs} lbs each · {((item.weight_lbs || 0) * item.qty).toFixed(2)} lbs
+                      </p>
                     </div>
 
                     <div className="customer-cart-controls">
@@ -426,12 +444,38 @@ export default function BrowsingPage() {
               </div>
 
               <div className="customer-cart-summary">
+                <div className="customer-cart-header">
+                <h2>Summary</h2>
+              </div>
+                <div className={`customer-cart-weight 
+                  ${weightTotal > 20 ? "over-limit" : ""}
+                  ${weightTotal > 15 && weightTotal <= 20 ? "warning-high" : ""}
+                  ${weightTotal > 10 && weightTotal <= 15 ? "warning-mid" : ""}`}>
+                  <span>Weight</span>
+                  <strong>{weightTotal.toFixed(2)} / 20 lbs</strong>
+
+                </div>
+
                 <div className="customer-cart-total">
-                  <span>Total</span>
+                  <span>Order Subtotal</span>
                   <strong>${cartTotal.toFixed(2)}</strong>
                 </div>
-                <button className="customer-checkout-btn" type="button">Checkout</button>
+
+                <div className={`customer-cart-deliveryfee ${weightTotal > 20 ? "over-limit" : ""}`}>
+                  <span>Delivery Fee</span>
+                  <strong>
+                      {deliveryFee == 0 ? "Free" : `$${deliveryFee}`}
+                  </strong>
               </div>
+
+              <div className="customer-cart-final-total">
+                  <span>Total</span>
+                  <strong>${finalTotal.toFixed(2)}</strong>
+              </div>                
+
+              <button className="customer-checkout-btn" type="button">Checkout</button>
+              </div>
+            
             </>
           )}
         </aside>
