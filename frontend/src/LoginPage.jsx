@@ -1,4 +1,4 @@
-import { useState } from "react";
+import {  useState } from "react";
 import { persistFrontendSession } from "./utils/authSession";
 
 const API_BASE = "http://localhost:8000";
@@ -32,7 +32,9 @@ async function apiPost(path, body) {
 }
 
 export default function LoginPage() {
-  const [mode, setMode] = useState("login");
+  const params = new URLSearchParams(window.location.search);
+  const mode = params.get("tab") === "register" ? "register" : "login";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -40,6 +42,11 @@ export default function LoginPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  const switchMode = (target) => {
+    setErrorMessage("");
+    window.location.href=`/login?tab=${target}`;
+  };
 
   async function handleLogin(e) {
     e.preventDefault();
@@ -68,7 +75,7 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       await apiPost("/api/auth/register", { name, email, password });
-      setMode("login");
+      window.location.href = "/login?tab=login";
       setErrorMessage("");
     } catch (err) {
       setErrorMessage(err.message);
@@ -601,30 +608,16 @@ export default function LoginPage() {
                 </button>
               </form>
 
-              {/* {mode === "login" && (
-                <>
-                  <div className="divider">Or continue with</div>
-                  <div className="social-row">
-                    <button className="btn-social">
-                      <span className="g-letter">G</span> Google
-                    </button>
-                    <button className="btn-social">
-                      <span className="fb-letter">f</span> Facebook
-                    </button>
-                  </div>
-                </>
-              )} */}
-
               <div className="switch-mode">
                 {mode === "login" ? (
                   <>Don't have an account?{" "}
-                    <span onClick={() => { setMode("register"); setErrorMessage(""); }}>
+                    <span onClick={() => { switchMode("register") }}>
                       Create Account
                     </span>
                   </>
                 ) : (
                   <>Already have an account?{" "}
-                    <span onClick={() => { setMode("login"); setErrorMessage(""); }}>
+                    <span onClick={() => { switchMode("login") }}>
                       Sign In
                     </span>
                   </>

@@ -243,6 +243,7 @@ export default function LandingPage() {
         .lp-audience-card:hover {
           transform: translateY(-4px);
           box-shadow: var(--shadow-md);
+          border: 1px solid #22c55e;
         }
 
         .lp-audience-icon {
@@ -283,6 +284,7 @@ export default function LandingPage() {
         .lp-feature-card:hover {
           transform: translateY(-4px);
           box-shadow: var(--shadow-md);
+          border: 1px solid #22c55e;
         }
 
         .lp-feature-icon-wrap {
@@ -557,7 +559,7 @@ export default function LandingPage() {
         </p>
         <div className="lp-hero-actions">
           <a className="lp-cta-primary" href="/login?tab=register">Create Free Account</a>
-          <a className="lp-cta-secondary" href="/login">Sign In</a>
+          <a className="lp-cta-secondary" href="/login?tab=login">Sign In</a>
         </div>
       </section>
 
@@ -707,7 +709,7 @@ export default function LandingPage() {
           <div className="lp-footer-logo-icon">🛒</div>
           <span className="lp-footer-logo-text">OFS</span>
         </a>
-        <p>© 2025 Organic Food Service · Downtown San Jose</p>
+        <p>© 2026 Organic Food Service · Downtown San Jose</p>
       </footer>
     </>
   );
