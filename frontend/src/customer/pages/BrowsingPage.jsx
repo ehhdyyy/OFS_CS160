@@ -222,7 +222,7 @@ export default function BrowsingPage() {
         <aside className="customer-filter-panel" id="browse-filters">
           <div className="customer-filter-section customer-filter-section-intro">
             <h2 className="customer-section-title">Filters</h2>
-            <p className="customer-helper-text">Browse grocery items without changing your backend.</p>
+            <p className="customer-helper-text">Quickly browse products by through various filters.</p>
           </div>
 
           <div className="customer-filter-section">
