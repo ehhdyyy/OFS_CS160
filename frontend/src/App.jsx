@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
 import LoginPage from './LoginPage';
+import LandingPage from './LandingPage';
 import AdminApp from './admin/AdminApp';
 import CustomerApp from './customer/CustomerApp';
-import { isAdminUiEnabled } from './utils/authSession';
+import { isAdminUiEnabled, getStoredEmail } from './utils/authSession';
 
 function normalizePathname(pathname = '/') {
   if (!pathname) {
@@ -39,11 +40,23 @@ export default function App() {
     return <AdminApp path={path} />;
   }
 
+  if (path === '/' || path === '') {
+    return <LandingPage />;
+  }
+
+  if (path === '/login') {
+    return <LoginPage />;
+  }
+
   if (path === '/account' || path === '/customer') {
     return <RedirectPage to="/home" />;
   }
 
   if (path === '/home') {
+    if (!getStoredEmail()) {
+      return <RedirectPage to="/login" />;
+    }
+
     if (adminUiEnabled) {
       return <RedirectPage to="/admin/dashboard" />;
     }

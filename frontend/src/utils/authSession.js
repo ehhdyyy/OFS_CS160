@@ -4,6 +4,7 @@ const STORAGE_KEYS = {
   email: 'ofs-user-email',
   name: 'ofs-user-name',
   adminUi: 'ofs-admin-ui',
+  role: 'ofs-user-role',
 };
 
 function safeSessionStorage() {
@@ -34,12 +35,13 @@ export function persistFrontendSession({ email = '', name = '', role = '' }) {
   // Temporary frontend-only admin gate.
   // The current backend schema seeds admin@ofs.com with role "manager",
   // while the old frontend only checked for role === "admin".
-  const adminEnabled = isAdminEmail(normalizedEmail) || normalizedRole === 'admin' || normalizedRole === 'manager';
+  const adminEnabled = isAdminEmail(normalizedEmail) || normalizedRole === 'admin' || normalizedRole === 'manager' || normalizedRole === 'employee';
 
   if (storage) {
     storage.setItem(STORAGE_KEYS.email, normalizedEmail);
     storage.setItem(STORAGE_KEYS.name, name);
     storage.setItem(STORAGE_KEYS.adminUi, adminEnabled ? 'true' : 'false');
+    storage.setItem(STORAGE_KEYS.role, normalizedRole);
   }
 
   return {
@@ -72,4 +74,9 @@ export function getStoredEmail() {
 export function getStoredName() {
   const storage = safeSessionStorage();
   return storage?.getItem(STORAGE_KEYS.name) || '';
+}
+
+export function getStoredRole() {
+  const storage = safeSessionStorage();
+  return storage?.getItem(STORAGE_KEYS.role) || '';
 }

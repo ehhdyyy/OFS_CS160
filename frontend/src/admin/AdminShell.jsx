@@ -1,4 +1,4 @@
-import { clearFrontendSession, getStoredName } from '../utils/authSession';
+import { clearFrontendSession, getStoredName, getStoredRole } from '../utils/authSession';
 
 const NAV_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', href: '/admin/dashboard', icon: 'fas fa-home' },
@@ -82,6 +82,8 @@ export default function AdminShell({
 }) {
   const storedName = getStoredName();
   const displayName = storedName || 'Admin User';
+  const isEmployee = getStoredRole() === 'employee';
+  const visibleNavItems = isEmployee ? NAV_ITEMS.filter(item => item.key !== 'revenue') : NAV_ITEMS;
 
   return (
     <div className="admin-portal">
@@ -127,7 +129,7 @@ export default function AdminShell({
         <div className="admin-main-container">
           <aside className="admin-sidebar custom-scrollbar">
             <ul className="admin-nav-list">
-              {NAV_ITEMS.map((item) => {
+              {visibleNavItems.map((item) => {
                 const active = item.key === activeNav;
 
                 return (

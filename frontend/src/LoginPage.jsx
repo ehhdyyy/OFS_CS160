@@ -39,6 +39,7 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   async function handleLogin(e) {
     e.preventDefault();
@@ -560,7 +561,7 @@ export default function LoginPage() {
                   <label>Password</label>
                   <div className="input-wrap">
                     <input
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       placeholder="Enter your password"
                       value={password}
                       onChange={e => setPassword(e.target.value)}
@@ -568,7 +569,14 @@ export default function LoginPage() {
                       minLength={6}
                       maxLength={72}
                     />
-                    <span className="input-icon">🔒</span>
+                    <span
+                      className="input-icon"
+                      onClick={() => setShowPassword(p => !p)}
+                      style={{ cursor: 'pointer', pointerEvents: 'auto', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-mid)', letterSpacing: '0.01em' }}
+                      title={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? "Hide" : "Show"}
+                    </span>
                   </div>
                 </div>
 

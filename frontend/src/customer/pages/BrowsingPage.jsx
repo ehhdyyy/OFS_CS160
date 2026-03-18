@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getStoredName } from '../../utils/authSession';
+import { getStoredName, clearFrontendSession } from '../../utils/authSession';
 import '../styles/browsing.css';
 
 const API_BASE = 'http://localhost:8000';
@@ -213,9 +213,28 @@ export default function BrowsingPage() {
           <li><a href="#browse-cart">Cart</a></li>
         </ul>
 
-        <button className="customer-profile-btn" type="button" title={storedName || 'Customer'}>
-          <div className="customer-profile-avatar customer-profile-avatar-fallback">{profileInitial}</div>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <button className="customer-profile-btn" type="button" title={storedName || 'Customer'}>
+            <div className="customer-profile-avatar customer-profile-avatar-fallback">{profileInitial}</div>
+          </button>
+          <button
+            type="button"
+            onClick={() => { clearFrontendSession(); window.location.href = '/'; }}
+            style={{
+              padding: '0.45rem 1rem',
+              border: '1.5px solid var(--border)',
+              borderRadius: '10px',
+              background: 'rgba(255,255,255,0.92)',
+              fontFamily: 'Inter, sans-serif',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              color: 'var(--text-mid)',
+              cursor: 'pointer',
+            }}
+          >
+            Log out
+          </button>
+        </div>
       </nav>
 
       <div className="customer-browse-page">
