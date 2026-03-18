@@ -18,26 +18,31 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ── Config — keep machine-specific values in .env ──────────────────────────
-DB_USER     = os.getenv("DB_USER", "root")
+DB_USER = os.getenv("DB_USER", "root")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
-DB_HOST     = os.getenv("DB_HOST", "localhost")
-DB_PORT     = os.getenv("DB_PORT", "3306")
-DB_NAME     = os.getenv("DB_NAME", "ofs_db")
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = os.getenv("DB_PORT", "3306")
+DB_NAME = os.getenv("DB_NAME", "ofs_db")
 
-JWT_SECRET       = ""  # <-- change this later
+JWT_SECRET = ""  # <-- change this later
 JWT_EXPIRY_HOURS = 24
 
 # ── Database connection ─────────────────────────────────────────────────────
 DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-engine       = create_engine(DATABASE_URL)
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
+
 
 def get_db():
     """Gives each request its own DB session and always closes it after."""
@@ -47,14 +52,18 @@ def get_db():
     finally:
         db.close()
 
+
 # ── Auth helpers ────────────────────────────────────────────────────────────
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 
 def hash_password(plain: str) -> str:
     return pwd_context.hash(plain)
 
+
 def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
+
 
 def create_jwt(user_id: int, role: str) -> str:
     payload = {
@@ -64,6 +73,7 @@ def create_jwt(user_id: int, role: str) -> str:
     }
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
+
 def decode_jwt(token: str) -> dict:
     try:
         return jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
@@ -72,15 +82,18 @@ def decode_jwt(token: str) -> dict:
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+
 # ── Request models ──────────────────────────────────────────────────────────
 class LoginRequest(BaseModel):
     email: str
     password: str
 
+
 class RegisterRequest(BaseModel):
     name: str
     email: str
     password: str
+
 
 # ── Routes ──────────────────────────────────────────────────────────────────
 
@@ -100,10 +113,15 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
             INSERT INTO users (name, email, password_hash, role)
             VALUES (:name, :email, :password_hash, 'customer')
         """),
-        {"name": body.name, "email": body.email, "password_hash": hash_password(body.password)}
+        {
+            "name": body.name,
+            "email": body.email,
+            "password_hash": hash_password(body.password),
+        }
     )
     db.commit()
     return {"message": "Registration successful"}
+
 
 # Runs when user clicks "Sign in"
 @app.post("/api/auth/login")
@@ -128,11 +146,13 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
 
     return {"message": "Login successful", "role": user.role, "name": user.name}
 
+
 # Runs when user logs out
 @app.post("/api/auth/logout")
 def logout(response: Response):
     response.delete_cookie("auth_token")
     return {"message": "Logged out"}
+
 
 # Runs when frontend checks logged in user
 @app.get("/api/auth/me")
@@ -150,7 +170,54 @@ def get_me(auth_token: Optional[str] = Cookie(default=None), db: Session = Depen
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    return {"userId": user.id, "name": user.name, "email": user.email, "role": user.role}
+    return {
+        "userId": user.id,
+        "name": user.name,
+        "email": user.email,
+        "role": user.role,
+    }
+
+
+# Customer browsing page product feed
+@app.get("/api/products")
+def get_products(db: Session = Depends(get_db)):
+    try:
+        rows = db.execute(
+            text("""
+                SELECT
+                    id,
+                    name,
+                    description,
+                    price,
+                    weight_lbs,
+                    category,
+                    is_available,
+                    is_organic,
+                    image_url
+                FROM products
+                ORDER BY id ASC
+            """)
+        ).mappings().all()
+
+        products = []
+        for row in rows:
+            products.append({
+                "id": row["id"],
+                "name": row["name"],
+                "description": row["description"],
+                "price": float(row["price"]) if row["price"] is not None else 0,
+                "weight_lbs": float(row["weight_lbs"]) if row["weight_lbs"] is not None else 0,
+                "category": row["category"],
+                "is_available": bool(row["is_available"]),
+                "is_organic": bool(row["is_organic"]) if row["is_organic"] is not None else False,
+                "image_url": row["image_url"],
+                "image": row["image_url"],  # supports browsing UIs that expect `image`
+            })
+
+        return products
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load products: {str(e)}")
+
 
 # Check that database & server running
 @app.get("/api/health")

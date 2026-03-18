@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { persistFrontendSession } from "./utils/authSession";
 
 const API_BASE = "http://localhost:8000";
 
@@ -45,11 +46,13 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       const data = await apiPost("/api/auth/login", { email, password });
-      if (data.role === "admin") {
-        window.location.href = "/admin";
-      } else {
-        window.location.href = "/home";
-      }
+      const { adminEnabled } = persistFrontendSession({
+        email,
+        name: data.name,
+        role: data.role,
+      });
+
+      window.location.href = adminEnabled ? "/admin/dashboard" : "/home";
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
