@@ -1,10 +1,11 @@
 -- OFS Database Schema
 -- Run this file in MySQL Workbench or via: mysql -u root -p < schema.sql
 
+DROP DATABASE IF EXISTS ofs_db;
 CREATE DATABASE IF NOT EXISTS ofs_db;
 USE ofs_db;
 
--- ── Users ──────────────────────────────────────────────────────────────────
+-- Users
 CREATE TABLE users (
     id            INT AUTO_INCREMENT PRIMARY KEY,
     name          VARCHAR(100) NOT NULL,
@@ -15,20 +16,21 @@ CREATE TABLE users (
     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- ── Products ───────────────────────────────────────────────────────────────
+-- Products
 CREATE TABLE products (
-    id          INT AUTO_INCREMENT PRIMARY KEY,
-    name        VARCHAR(150) NOT NULL,
-    description TEXT,
-    price       DECIMAL(10, 2) NOT NULL,
-    weight_lbs  DECIMAL(6, 2) NOT NULL,
-    category    VARCHAR(100),
+    id            INT AUTO_INCREMENT PRIMARY KEY,
+    name          VARCHAR(150) NOT NULL,
+    description   TEXT,
+    price         DECIMAL(10, 2) NOT NULL,
+    weight_lbs    DECIMAL(6, 2) NOT NULL,
+    category      VARCHAR(100),
     is_available  BOOLEAN DEFAULT TRUE,
-    image_url   VARCHAR(500),
-    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    is_organic    BOOLEAN DEFAULT FALSE,
+    image_url     VARCHAR(500),
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- ── Inventory ──────────────────────────────────────────────────────────────
+-- Inventory
 CREATE TABLE inventory (
     id          INT AUTO_INCREMENT PRIMARY KEY,
     product_id  INT NOT NULL UNIQUE,
@@ -37,7 +39,7 @@ CREATE TABLE inventory (
     FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 );
 
--- ── Robots ─────────────────────────────────────────────────────────────────
+-- Robots
 CREATE TABLE robots (
     id              INT AUTO_INCREMENT PRIMARY KEY,
     name            VARCHAR(100),
@@ -48,47 +50,47 @@ CREATE TABLE robots (
     current_lng     DECIMAL(9, 6)
 );
 
--- ── Orders ─────────────────────────────────────────────────────────────────
+-- Orders
 CREATE TABLE orders (
-    id              INT AUTO_INCREMENT PRIMARY KEY,
-    user_id         INT NOT NULL,
-    status          ENUM('processing', 'out_for_delivery', 'delivered') DEFAULT 'processing',
-    total_price     DECIMAL(10, 2) NOT NULL,
-    total_weight    DECIMAL(6, 2) NOT NULL,
-    delivery_fee    DECIMAL(6, 2) NOT NULL DEFAULT 0.00,
+    id               INT AUTO_INCREMENT PRIMARY KEY,
+    user_id          INT NOT NULL,
+    status           ENUM('processing', 'out_for_delivery', 'delivered') DEFAULT 'processing',
+    total_price      DECIMAL(10, 2) NOT NULL,
+    total_weight     DECIMAL(6, 2) NOT NULL,
+    delivery_fee     DECIMAL(6, 2) NOT NULL DEFAULT 0.00,
     delivery_address VARCHAR(255) NOT NULL,
-    delivery_date   DATE,
-    delivery_window VARCHAR(50),
-    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    delivery_date    DATE,
+    delivery_window  VARCHAR(50),
+    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
--- ── Order Items (snapshot of product at time of purchase) ──────────────────
+-- Order Items
 CREATE TABLE order_items (
     id          INT AUTO_INCREMENT PRIMARY KEY,
     order_id    INT NOT NULL,
     product_id  INT NOT NULL,
-    name        VARCHAR(150) NOT NULL,   -- snapshot in case product changes later
-    price       DECIMAL(10, 2) NOT NULL, -- snapshot
-    weight_lbs  DECIMAL(6, 2) NOT NULL,  -- snapshot
+    name        VARCHAR(150) NOT NULL,
+    price       DECIMAL(10, 2) NOT NULL,
+    weight_lbs  DECIMAL(6, 2) NOT NULL,
     quantity    INT NOT NULL,
     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
     FOREIGN KEY (product_id) REFERENCES products(id)
 );
 
--- ── Deliveries (robot trips) ───────────────────────────────────────────────
+-- Deliveries
 CREATE TABLE deliveries (
     id              INT AUTO_INCREMENT PRIMARY KEY,
     robot_id        INT NOT NULL,
     status          ENUM('scheduled', 'in_progress', 'completed') DEFAULT 'scheduled',
     total_weight    DECIMAL(6, 2),
-    route_polyline  TEXT,               -- encoded Google Maps polyline
+    route_polyline  TEXT,
     planned_start   TIMESTAMP,
     completed_at    TIMESTAMP,
     FOREIGN KEY (robot_id) REFERENCES robots(id)
 );
 
--- ── Delivery <-> Orders join table ────────────────────────────────────────
+-- Delivery <-> Orders join table
 CREATE TABLE delivery_orders (
     delivery_id INT NOT NULL,
     order_id    INT NOT NULL,
@@ -97,7 +99,7 @@ CREATE TABLE delivery_orders (
     FOREIGN KEY (order_id) REFERENCES orders(id)
 );
 
--- ── Revenue ────────────────────────────────────────────────────────────────
+-- Revenue
 CREATE TABLE revenue (
     id          INT AUTO_INCREMENT PRIMARY KEY,
     order_id    INT NOT NULL UNIQUE,
@@ -106,22 +108,26 @@ CREATE TABLE revenue (
     FOREIGN KEY (order_id) REFERENCES orders(id)
 );
 
--- ── Seed data: test users ──────────────────────────────────────────────────
--- Passwords are bcrypt hashes — the backend handles hashing, these are just for dev
+-- Seed data: test users
 INSERT INTO users (name, email, password_hash, role) VALUES
     ('Lucas',      'customer@ofs.com', '$2b$12$placeholder_hash_customer', 'customer'),
     ('Admin User', 'admin@ofs.com',    '$2b$12$placeholder_hash_admin',    'manager');
 
--- ── Seed data: sample products ─────────────────────────────────────────────
-INSERT INTO products (name, description, price, weight_lbs, category, is_organic) VALUES
-    ('Organic Apples',   'Crisp Fuji apples, locally grown',    4.99,  2.00, 'Fruit',     TRUE),
-    ('Organic Bananas',  'Fair-trade organic bananas, 1 bunch', 1.99,  1.00, 'Fruit',     TRUE),
-    ('Organic Granola',  'Honey oat granola, 12oz bag',         6.49,  0.75, 'Pantry',    TRUE),
-    ('Organic Whole Milk','1 gallon, grass-fed',                7.99, 10.00, 'Dairy',     TRUE),
-    ('Organic Spinach',  'Baby spinach, 5oz clamshell',         3.99,  0.31, 'Vegetable', TRUE);
+-- Seed data: sample products
+INSERT INTO products (name, description, price, weight_lbs, category, is_available, is_organic, image_url) VALUES
+    ('Organic Apples',     'Crisp Fuji apples, locally grown',     4.99,  2.00, 'Fruit',     TRUE, TRUE,  NULL),
+    ('Organic Bananas',    'Fair-trade organic bananas, 1 bunch',  1.99,  1.00, 'Fruit',     TRUE, TRUE,  NULL),
+    ('Organic Granola',    'Honey oat granola, 12oz bag',          6.49,  0.75, 'Pantry',    TRUE, TRUE,  NULL),
+    ('Organic Whole Milk', '1 gallon, grass-fed',                  7.99, 10.00, 'Dairy',     TRUE, TRUE,  NULL),
+    ('Organic Spinach',    'Baby spinach, 5oz clamshell',          3.99,  0.31, 'Vegetable', TRUE, TRUE,  NULL);
 
--- Seed inventory for those products
-INSERT INTO inventory (product_id, quantity) VALUES (1,50),(2,80),(3,30),(4,20),(5,60);
+-- Seed inventory
+INSERT INTO inventory (product_id, quantity) VALUES
+    (1, 50),
+    (2, 80),
+    (3, 30),
+    (4, 20),
+    (5, 60);
 
 -- Seed one robot
 INSERT INTO robots (name, status, battery_pct) VALUES ('Robot-01', 'available', 100);

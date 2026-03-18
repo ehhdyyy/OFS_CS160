@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { persistFrontendSession } from "./utils/authSession";
 
 const API_BASE = "http://localhost:8000";
 
@@ -48,11 +48,13 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       const data = await apiPost("/api/auth/login", { email, password });
-      if (data.role === "admin") {
-        navigate("/admin");
-      } else {
-        navigate("/home");
-      }
+      const { adminEnabled } = persistFrontendSession({
+        email,
+        name: data.name,
+        role: data.role,
+      });
+
+      window.location.href = adminEnabled ? "/admin/dashboard" : "/home";
     } catch (err) {
       setErrorMessage(err.message);
     } finally {

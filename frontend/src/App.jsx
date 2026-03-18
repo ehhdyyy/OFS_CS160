@@ -1,18 +1,55 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import LoginPage from "./LoginPage";
-import BrowsingPage from "./BrowsingPage";
-// import AdminPage from "./AdminPage";
+import { useEffect } from 'react';
+import LoginPage from './LoginPage';
+import AdminApp from './admin/AdminApp';
+import CustomerApp from './customer/CustomerApp';
+import { isAdminUiEnabled } from './utils/authSession';
 
-function App() {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<LoginPage />} />
-        <Route path="/home" element={<BrowsingPage />} />
-        {/* <Route path="/admin" element={<AdminPage />} /> */}
-      </Routes>
-    </BrowserRouter>
-  );
+function normalizePathname(pathname = '/') {
+  if (!pathname) {
+    return '/';
+  }
+
+  const normalized = pathname.replace(/\/+$/, '');
+  return normalized || '/';
 }
 
-export default App;
+function RedirectPage({ to }) {
+  useEffect(() => {
+    if (window.location.pathname !== to) {
+      window.location.replace(to);
+    }
+  }, [to]);
+
+  return null;
+}
+
+export default function App() {
+  const path = normalizePathname(window.location.pathname);
+  const adminUiEnabled = isAdminUiEnabled();
+
+  if (path === '/admin') {
+    return <RedirectPage to={adminUiEnabled ? '/admin/dashboard' : '/'} />;
+  }
+
+  if (path.startsWith('/admin/')) {
+    if (!adminUiEnabled) {
+      return <RedirectPage to="/" />;
+    }
+
+    return <AdminApp path={path} />;
+  }
+
+  if (path === '/account' || path === '/customer') {
+    return <RedirectPage to="/home" />;
+  }
+
+  if (path === '/home') {
+    if (adminUiEnabled) {
+      return <RedirectPage to="/admin/dashboard" />;
+    }
+
+    return <CustomerApp />;
+  }
+
+  return <LoginPage />;
+}
