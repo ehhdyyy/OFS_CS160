@@ -5,6 +5,7 @@ import OrdersPage from './pages/OrdersPage';
 import DeliveriesPage from './pages/DeliveriesPage';
 import RobotsPage from './pages/RobotsPage';
 import RevenuePage from './pages/RevenuePage';
+import { getStoredRole } from '../utils/authSession';
 
 function sectionFromPath(path) {
   const trimmed = path.replace(/^\/admin\/?/, '');
@@ -28,6 +29,9 @@ export default function AdminApp({ path }) {
     case 'robots':
       return <RobotsPage />;
     case 'revenue':
+      if (getStoredRole() === 'employee') {
+        return <DashboardPage />;
+      }
       return <RevenuePage />;
     default:
       return <DashboardPage />;
