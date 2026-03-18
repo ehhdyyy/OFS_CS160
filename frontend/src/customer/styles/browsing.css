@@ -152,10 +152,25 @@
   color: white;
   font-size: 1.5rem;
   cursor: pointer;
+  display:flex;
+  align-items: center;
+  justify-content: center;
+
+  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);
+  transition: all 0.2s ease;
+}
+
+.customer-app .customer-product-bottom button:hover {
+  transform: scale(1.08);
+  background: #059669;
+}
+
+.customer-app .customer-product-bottom button:active {
+  transform: scale(0.95);
 }
 
 .customer-app .customer-product-bottom button:disabled {
-  background: rgb(240, 148, 148);
+  background: rgb(253, 57, 57, 0.92);
   color: white;
   cursor: not-allowed;
 }

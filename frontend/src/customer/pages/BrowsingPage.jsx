@@ -224,11 +224,11 @@ export default function BrowsingPage() {
               padding: '0.45rem 1rem',
               border: '1.5px solid var(--border)',
               borderRadius: '10px',
-              background: 'rgba(255,255,255,0.92)',
+              background: 'rgba(253, 57, 57, 0.92)',
               fontFamily: 'Inter, sans-serif',
               fontSize: '0.85rem',
               fontWeight: 600,
-              color: 'var(--text-mid)',
+              color: 'white',
               cursor: 'pointer',
             }}
           >
