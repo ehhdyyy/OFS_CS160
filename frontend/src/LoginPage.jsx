@@ -40,8 +40,6 @@ export default function LoginPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const navigate = useNavigate();
-
   async function handleLogin(e) {
     e.preventDefault();
     setErrorMessage("");
