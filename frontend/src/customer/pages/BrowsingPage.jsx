@@ -462,7 +462,15 @@ export default function BrowsingPage() {
                 </div>
 
                 <div className={`customer-cart-deliveryfee ${weightTotal > 20 ? "over-limit" : ""}`}>
-                  <span>Delivery Fee</span>
+                  <span className= "customer-cart-delivery-label">
+                    Delivery Fee
+                    <span className="info-icon">
+                      i
+                      <span className="tooltip">
+                        Delivery fee applies when total weight exceed 20 lbs.
+                      </span>
+                    </span>
+                  </span>
                   <strong>
                       {deliveryFee == 0 ? "Free" : `$${deliveryFee}`}
                   </strong>
