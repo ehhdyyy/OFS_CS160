@@ -286,3 +286,34 @@ class TestProducts:
     def test_product_not_found(self):
         response = client.get("/api/products/99999")
         assert response.status_code == 404
+
+
+class TestAdminDashboard:
+    """GET /api/admin/dashboard"""
+
+    def test_admin_dashboard_requires_admin_role(self):
+        customer_login = client.post("/api/auth/login", json={
+            "email": "customer@ofs.com",
+            "password": "admin123",
+        })
+        assert customer_login.status_code == 200
+
+        response = client.get("/api/admin/dashboard", cookies=customer_login.cookies)
+        assert response.status_code == 403
+
+    def test_admin_dashboard_returns_expected_shape_for_manager(self):
+        admin_login = client.post("/api/auth/login", json={
+            "email": "admin@ofs.com",
+            "password": "admin123",
+        })
+        assert admin_login.status_code == 200
+
+        response = client.get("/api/admin/dashboard", cookies=admin_login.cookies)
+        assert response.status_code == 200
+
+        data = response.json()
+        assert "stats" in data
+        assert "activity" in data
+        assert "quick_panel" in data
+        assert "revenue_chart" in data
+        assert len(data["stats"]) == 4
