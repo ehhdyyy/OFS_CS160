@@ -348,3 +348,33 @@ class TestAdminProducts:
         assert "categories" in data
         assert "items" in data
         assert isinstance(data["items"], list)
+
+
+class TestAdminOrders:
+    """GET /api/admin/orders"""
+
+    def test_admin_orders_requires_admin_role(self):
+        customer_login = client.post("/api/auth/login", json={
+            "email": "customer@ofs.com",
+            "password": "admin123",
+        })
+        assert customer_login.status_code == 200
+
+        response = client.get("/api/admin/orders", cookies=customer_login.cookies)
+        assert response.status_code == 403
+
+    def test_admin_orders_returns_orders_payload(self):
+        employee_login = client.post("/api/auth/login", json={
+            "email": "employee@ofs.com",
+            "password": "admin123",
+        })
+        assert employee_login.status_code == 200
+
+        response = client.get("/api/admin/orders", cookies=employee_login.cookies)
+        assert response.status_code == 200
+
+        data = response.json()
+        assert "quick_panel" in data
+        assert "cards" in data
+        assert "map_points" in data
+        assert isinstance(data["cards"], list)
