@@ -494,6 +494,134 @@ def get_admin_dashboard(current_user: dict = Depends(require_role("manager", "em
         raise HTTPException(status_code=500, detail=f"Failed to load admin dashboard: {str(e)}")
 
 
+@app.get("/api/admin/products")
+def get_admin_products(
+    search: Optional[str] = Query(default=None, description="Search by product name"),
+    category: Optional[str] = Query(default=None, description="Filter by category"),
+    current_user: dict = Depends(require_role("manager", "employee")),
+    db: Session = Depends(get_db),
+):
+    try:
+        conditions = []
+        params = {}
+
+        if search:
+            conditions.append("p.name LIKE :search")
+            params["search"] = f"%{search}%"
+
+        if category and category.lower() != "all categories":
+            conditions.append("p.category = :category")
+            params["category"] = category
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+        rows = db.execute(
+            text(f"""
+                SELECT
+                    p.id,
+                    p.name,
+                    p.category,
+                    p.price,
+                    p.weight_lbs,
+                    p.is_available,
+                    COALESCE(i.quantity, 0) AS stock,
+                    COALESCE(SUM(oi.quantity), 0) AS total_sold
+                FROM products p
+                LEFT JOIN inventory i ON i.product_id = p.id
+                LEFT JOIN order_items oi ON oi.product_id = p.id
+                {where_clause}
+                GROUP BY
+                    p.id, p.name, p.category, p.price, p.weight_lbs, p.is_available, i.quantity
+                ORDER BY p.name ASC
+            """),
+            params,
+        ).mappings().all()
+
+        total_products = db.execute(text("SELECT COUNT(*) FROM products")).scalar() or 0
+        low_stock_items = db.execute(
+            text("SELECT COUNT(*) FROM inventory WHERE quantity > 0 AND quantity <= 15")
+        ).scalar() or 0
+        items_sold = db.execute(
+            text("SELECT COALESCE(SUM(quantity), 0) FROM order_items")
+        ).scalar() or 0
+        available_promotions = db.execute(
+            text("SELECT COUNT(*) FROM products WHERE is_available = TRUE")
+        ).scalar() or 0
+
+        categories = db.execute(
+            text("""
+                SELECT DISTINCT category
+                FROM products
+                WHERE category IS NOT NULL AND category <> ''
+                ORDER BY category ASC
+            """)
+        ).scalars().all()
+
+        items = []
+        for row in rows:
+            stock = int(row["stock"] or 0)
+            total_sold = int(row["total_sold"] or 0)
+
+            if stock == 0:
+                status = "Out of Stock"
+                status_class = "bg-red-100 text-red-800"
+                progress_class = "bg-red-500"
+                row_class = "bg-red-50/20"
+            elif stock <= 15:
+                status = "Low Stock"
+                status_class = "bg-orange-100 text-orange-800"
+                progress_class = "bg-orange-500"
+                row_class = "bg-orange-50/30"
+            else:
+                status = "In Stock"
+                status_class = "bg-green-100 text-green-800"
+                progress_class = "bg-green-500"
+                row_class = ""
+
+            progress = min(int((stock / 200) * 100), 100)
+
+            items.append({
+                "id": row["id"],
+                "sku": f"PRD-{int(row['id']):03d}",
+                "name": row["name"],
+                "category": row["category"] or "Uncategorized",
+                "price": format_money(row["price"]),
+                "unit": "/ea",
+                "stock": stock,
+                "progress": progress,
+                "progressClass": progress_class,
+                "totalSold": format_count(total_sold),
+                "status": status,
+                "statusClass": status_class,
+                "rowClass": row_class,
+            })
+
+        return {
+            "viewer_role": current_user["role"],
+            "summary": {
+                "total_products": format_count(total_products),
+                "low_stock_items": format_count(low_stock_items),
+                "items_sold_30d": format_count(items_sold),
+            },
+            "quick_panel": [
+                {
+                    "label": "Low Stock Alerts",
+                    "value": format_count(low_stock_items),
+                    "badgeClassName": "bg-red-100 text-red-700",
+                },
+                {
+                    "label": "Active Products",
+                    "value": format_count(available_promotions),
+                    "badgeClassName": "bg-blue-100 text-blue-700",
+                },
+            ],
+            "categories": categories,
+            "items": items,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load admin products: {str(e)}")
+
+
 # Single product detail with stock info
 @app.get("/api/products/{product_id}")
 def get_product(product_id: int, db: Session = Depends(get_db)):
