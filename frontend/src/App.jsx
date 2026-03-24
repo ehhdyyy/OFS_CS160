@@ -51,6 +51,7 @@ function useSessionRevalidation() {
         if (res.ok && !cancelled) {
           const data = await res.json();
           persistFrontendSession({
+            userId: data.userId,
             email: data.email,
             name: data.name,
             role: data.role,

@@ -2,17 +2,26 @@ import { useEffect, useState } from 'react';
 import './styles/customer.css';
 import BrowsingPage from './pages/BrowsingPage';
 import ProductDetailPage from './pages/ProductDetailPage';
+import { getStoredUserId } from '../utils/authSession';
 
 export default function CustomerApp() {
 
+  const userId = getStoredUserId();
+  const cartKey = `cart_user_${userId}`;
+
   const [cart, setCart] = useState(() => {
-    const savedCart = localStorage.getItem('cart');
+    const savedCart = localStorage.getItem(cartKey);
     return savedCart ? JSON.parse(savedCart) : [];
   })  
 
   useEffect(() => {
-    localStorage.setItem('cart', JSON.stringify(cart))
-  }, [cart]);
+    const savedCart = localStorage.getItem(cartKey);
+    setCart(savedCart ? JSON.parse(savedCart) : []);
+  }, [cartKey]);
+
+  useEffect(() => {
+    localStorage.setItem(cartKey, JSON.stringify(cart))
+  }, [cartKey, cart]);
 
   function addToCart(product, quantityToAdd = 1) {
     setCart((previous) => {

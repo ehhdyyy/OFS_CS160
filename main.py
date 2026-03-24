@@ -217,7 +217,12 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
         samesite="lax",
     )
 
-    return {"message": "Login successful", "role": user.role, "name": user.name}
+    return {
+        "message": "Login successful", 
+        "userId": user.id, 
+        "role": user.role, 
+        "name": user.name,
+        }
 
 
 # Runs when user logs out
