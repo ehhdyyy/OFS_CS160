@@ -83,6 +83,38 @@ def decode_jwt(token: str) -> dict:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
+def format_money(value) -> str:
+    return f"${float(value or 0):,.2f}"
+
+
+def format_count(value) -> str:
+    return f"{int(value or 0):,}"
+
+
+def humanize_minutes_ago(value) -> str:
+    if value is None:
+        return "Unknown"
+
+    now = datetime.datetime.now(value.tzinfo) if getattr(value, "tzinfo", None) else datetime.datetime.now()
+    minutes = max(int((now - value).total_seconds() // 60), 0)
+
+    if minutes < 1:
+        return "Just now"
+    if minutes == 1:
+        return "1 minute ago"
+    if minutes < 60:
+        return f"{minutes} minutes ago"
+
+    hours = minutes // 60
+    if hours == 1:
+        return "1 hour ago"
+    if hours < 24:
+        return f"{hours} hours ago"
+
+    days = hours // 24
+    return "1 day ago" if days == 1 else f"{days} days ago"
+
+
 # ── Auth middleware (reusable Depends) ──────────────────────────────────────
 
 def require_auth(
@@ -314,6 +346,410 @@ def get_products(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load products: {str(e)}")
+
+
+# Admin dashboard overview
+@app.get("/api/admin/dashboard")
+def get_admin_dashboard(current_user: dict = Depends(require_role("manager", "employee")), db: Session = Depends(get_db)):
+    try:
+        total_revenue = db.execute(text("SELECT COALESCE(SUM(amount), 0) FROM revenue")).scalar() or 0
+        total_orders = db.execute(text("SELECT COUNT(*) FROM orders")).scalar() or 0
+        active_deliveries = db.execute(
+            text("SELECT COUNT(*) FROM deliveries WHERE status IN ('scheduled', 'in_progress')")
+        ).scalar() or 0
+        available_robots = db.execute(
+            text("SELECT COUNT(*) FROM robots WHERE status = 'available'")
+        ).scalar() or 0
+        low_stock_items = db.execute(
+            text("SELECT COUNT(*) FROM inventory WHERE quantity > 0 AND quantity <= 15")
+        ).scalar() or 0
+        pending_deliveries = db.execute(
+            text("SELECT COUNT(*) FROM orders WHERE status = 'processing'")
+        ).scalar() or 0
+
+        revenue_points = db.execute(
+            text("""
+                SELECT
+                    DATE(recorded_at) AS day_key,
+                    DATE_FORMAT(recorded_at, '%a') AS day_label,
+                    ROUND(SUM(amount), 2) AS amount
+                FROM revenue
+                WHERE recorded_at >= NOW() - INTERVAL 6 DAY
+                GROUP BY DATE(recorded_at), DATE_FORMAT(recorded_at, '%a')
+                ORDER BY day_key ASC
+            """)
+        ).mappings().all()
+
+        recent_orders = db.execute(
+            text("""
+                SELECT
+                    o.id,
+                    o.total_price,
+                    o.status,
+                    o.created_at,
+                    u.name AS customer_name
+                FROM orders o
+                LEFT JOIN users u ON u.id = o.user_id
+                ORDER BY o.created_at DESC
+                LIMIT 4
+            """)
+        ).mappings().all()
+
+        robot_snapshot = db.execute(
+            text("""
+                SELECT
+                    id,
+                    name,
+                    status,
+                    battery_pct
+                FROM robots
+                ORDER BY
+                    CASE status
+                        WHEN 'maintenance' THEN 1
+                        WHEN 'on_delivery' THEN 2
+                        ELSE 3
+                    END,
+                    battery_pct ASC,
+                    id ASC
+                LIMIT 2
+            """)
+        ).mappings().all()
+
+        activity = []
+        for order in recent_orders:
+            activity.append({
+                "title": f"Order #{order['id']} from {order['customer_name'] or 'Unknown customer'}",
+                "description": f"{order['status'].replace('_', ' ').title()} • {format_money(order['total_price'])}",
+                "time": humanize_minutes_ago(order["created_at"]),
+                "iconClass": "fas fa-shopping-cart",
+                "tone": "green" if order["status"] == "delivered" else "blue",
+            })
+
+        for robot in robot_snapshot:
+            robot_name = robot["name"] or f"Robot #{robot['id']}"
+            activity.append({
+                "title": f"{robot_name} status update",
+                "description": f"{robot['status'].replace('_', ' ').title()} • Battery {int(robot['battery_pct'] or 0)}%",
+                "time": "Fleet snapshot",
+                "iconClass": "fas fa-robot",
+                "tone": "orange" if robot["status"] == "maintenance" else "purple",
+            })
+
+        return {
+            "viewer_role": current_user["role"],
+            "quick_panel": [
+                {
+                    "label": "Available Robots",
+                    "value": format_count(available_robots),
+                    "badgeClassName": "bg-green-100 text-green-700",
+                },
+                {
+                    "label": "Pending Deliveries",
+                    "value": format_count(pending_deliveries),
+                    "badgeClassName": "bg-orange-100 text-orange-700",
+                },
+            ],
+            "stats": [
+                {
+                    "key": "revenue",
+                    "title": "Total Revenue",
+                    "value": format_money(total_revenue),
+                    "trend": f"{format_count(len(revenue_points))} day snapshot",
+                    "trendType": "up",
+                    "iconClass": "fas fa-dollar-sign",
+                    "tone": "blue",
+                },
+                {
+                    "key": "orders",
+                    "title": "Total Orders",
+                    "value": format_count(total_orders),
+                    "trend": f"{format_count(pending_deliveries)} processing",
+                    "trendType": "up",
+                    "iconClass": "fas fa-shopping-cart",
+                    "tone": "green",
+                },
+                {
+                    "key": "deliveries",
+                    "title": "Active Deliveries",
+                    "value": format_count(active_deliveries),
+                    "trend": f"{format_count(low_stock_items)} low-stock items",
+                    "trendType": "accent",
+                    "iconClass": "fas fa-truck",
+                    "tone": "orange",
+                },
+                {
+                    "key": "robots",
+                    "title": "Available Robots",
+                    "value": format_count(available_robots),
+                    "trend": "Live fleet readiness",
+                    "trendType": "neutral",
+                    "iconClass": "fas fa-robot",
+                    "tone": "purple",
+                },
+            ],
+            "activity": activity[:6],
+            "revenue_chart": {
+                "labels": [row["day_label"] for row in revenue_points],
+                "values": [float(row["amount"] or 0) for row in revenue_points],
+            },
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load admin dashboard: {str(e)}")
+
+
+@app.get("/api/admin/products")
+def get_admin_products(
+    search: Optional[str] = Query(default=None, description="Search by product name"),
+    category: Optional[str] = Query(default=None, description="Filter by category"),
+    current_user: dict = Depends(require_role("manager", "employee")),
+    db: Session = Depends(get_db),
+):
+    try:
+        conditions = []
+        params = {}
+
+        if search:
+            conditions.append("p.name LIKE :search")
+            params["search"] = f"%{search}%"
+
+        if category and category.lower() != "all categories":
+            conditions.append("p.category = :category")
+            params["category"] = category
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+        rows = db.execute(
+            text(f"""
+                SELECT
+                    p.id,
+                    p.name,
+                    p.category,
+                    p.price,
+                    p.weight_lbs,
+                    p.is_available,
+                    COALESCE(i.quantity, 0) AS stock,
+                    COALESCE(SUM(oi.quantity), 0) AS total_sold
+                FROM products p
+                LEFT JOIN inventory i ON i.product_id = p.id
+                LEFT JOIN order_items oi ON oi.product_id = p.id
+                {where_clause}
+                GROUP BY
+                    p.id, p.name, p.category, p.price, p.weight_lbs, p.is_available, i.quantity
+                ORDER BY p.name ASC
+            """),
+            params,
+        ).mappings().all()
+
+        total_products = db.execute(text("SELECT COUNT(*) FROM products")).scalar() or 0
+        low_stock_items = db.execute(
+            text("SELECT COUNT(*) FROM inventory WHERE quantity > 0 AND quantity <= 15")
+        ).scalar() or 0
+        items_sold = db.execute(
+            text("SELECT COALESCE(SUM(quantity), 0) FROM order_items")
+        ).scalar() or 0
+        available_promotions = db.execute(
+            text("SELECT COUNT(*) FROM products WHERE is_available = TRUE")
+        ).scalar() or 0
+
+        categories = db.execute(
+            text("""
+                SELECT DISTINCT category
+                FROM products
+                WHERE category IS NOT NULL AND category <> ''
+                ORDER BY category ASC
+            """)
+        ).scalars().all()
+
+        items = []
+        for row in rows:
+            stock = int(row["stock"] or 0)
+            total_sold = int(row["total_sold"] or 0)
+
+            if stock == 0:
+                status = "Out of Stock"
+                status_class = "bg-red-100 text-red-800"
+                progress_class = "bg-red-500"
+                row_class = "bg-red-50/20"
+            elif stock <= 15:
+                status = "Low Stock"
+                status_class = "bg-orange-100 text-orange-800"
+                progress_class = "bg-orange-500"
+                row_class = "bg-orange-50/30"
+            else:
+                status = "In Stock"
+                status_class = "bg-green-100 text-green-800"
+                progress_class = "bg-green-500"
+                row_class = ""
+
+            progress = min(int((stock / 200) * 100), 100)
+
+            items.append({
+                "id": row["id"],
+                "sku": f"PRD-{int(row['id']):03d}",
+                "name": row["name"],
+                "category": row["category"] or "Uncategorized",
+                "price": format_money(row["price"]),
+                "unit": "/ea",
+                "stock": stock,
+                "progress": progress,
+                "progressClass": progress_class,
+                "totalSold": format_count(total_sold),
+                "status": status,
+                "statusClass": status_class,
+                "rowClass": row_class,
+            })
+
+        return {
+            "viewer_role": current_user["role"],
+            "summary": {
+                "total_products": format_count(total_products),
+                "low_stock_items": format_count(low_stock_items),
+                "items_sold_30d": format_count(items_sold),
+            },
+            "quick_panel": [
+                {
+                    "label": "Low Stock Alerts",
+                    "value": format_count(low_stock_items),
+                    "badgeClassName": "bg-red-100 text-red-700",
+                },
+                {
+                    "label": "Active Products",
+                    "value": format_count(available_promotions),
+                    "badgeClassName": "bg-blue-100 text-blue-700",
+                },
+            ],
+            "categories": categories,
+            "items": items,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load admin products: {str(e)}")
+
+
+@app.get("/api/admin/orders")
+def get_admin_orders(
+    search: Optional[str] = Query(default=None, description="Search by customer name or order id"),
+    status: Optional[str] = Query(default=None, description="Filter by order status"),
+    current_user: dict = Depends(require_role("manager", "employee")),
+    db: Session = Depends(get_db),
+):
+    try:
+        conditions = []
+        params = {}
+
+        if search:
+            conditions.append("(u.name LIKE :search OR CAST(o.id AS CHAR) LIKE :search)")
+            params["search"] = f"%{search}%"
+
+        status_map = {
+            "preparing": "processing",
+            "processing": "processing",
+            "in transit": "out_for_delivery",
+            "out_for_delivery": "out_for_delivery",
+            "delivered": "delivered",
+        }
+        normalized_status = status_map.get(str(status or "").strip().lower())
+        if normalized_status:
+            conditions.append("o.status = :status")
+            params["status"] = normalized_status
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+        order_rows = db.execute(
+            text(f"""
+                SELECT
+                    o.id,
+                    o.status,
+                    o.total_price,
+                    o.delivery_address,
+                    o.created_at,
+                    u.name AS customer_name,
+                    r.name AS robot_name,
+                    d.id AS delivery_id,
+                    d.status AS delivery_status
+                FROM orders o
+                LEFT JOIN users u ON u.id = o.user_id
+                LEFT JOIN delivery_orders do_map ON do_map.order_id = o.id
+                LEFT JOIN deliveries d ON d.id = do_map.delivery_id
+                LEFT JOIN robots r ON r.id = d.robot_id
+                {where_clause}
+                ORDER BY o.created_at DESC, o.id DESC
+                LIMIT 12
+            """),
+            params,
+        ).mappings().all()
+
+        active_robots = db.execute(
+            text("SELECT COUNT(*) FROM robots WHERE status IN ('available', 'on_delivery')")
+        ).scalar() or 0
+        pending_deliveries = db.execute(
+            text("SELECT COUNT(*) FROM orders WHERE status = 'processing'")
+        ).scalar() or 0
+
+        map_points = []
+        for row in order_rows[:4]:
+            status_value = row["status"] or ""
+            if status_value == "delivered":
+                point_color = "green"
+            elif status_value == "out_for_delivery":
+                point_color = "blue"
+            else:
+                point_color = "orange"
+
+            map_points.append({
+                "orderId": f"#ORD-{int(row['id']):04d}",
+                "robotLabel": row["robot_name"] or "Awaiting robot",
+                "statusLabel": status_value.replace("_", " ").title(),
+                "color": point_color,
+            })
+
+        cards = []
+        for index, row in enumerate(order_rows):
+            status_value = row["status"] or "processing"
+            if status_value == "out_for_delivery":
+                status_label = "In Transit"
+                status_class = "text-blue-700 bg-blue-100"
+                detail = f"Assigned to: {row['robot_name'] or 'Awaiting robot'}"
+                meta_right = "Out for delivery"
+            elif status_value == "delivered":
+                status_label = "Delivered"
+                status_class = "text-green-700 bg-green-100"
+                detail = f"Customer: {row['customer_name'] or 'Unknown customer'}"
+                meta_right = "Delivered"
+            else:
+                status_label = "Preparing"
+                status_class = "text-orange-700 bg-orange-100"
+                detail = f"Customer: {row['customer_name'] or 'Unknown customer'}"
+                meta_right = "Awaiting robot assignment"
+
+            cards.append({
+                "id": f"#ORD-{int(row['id']):04d}",
+                "status": status_label,
+                "statusClass": status_class,
+                "detail": detail,
+                "metaLeft": f"${float(row['total_price'] or 0):.2f} • {row['delivery_address']}",
+                "metaRight": meta_right,
+                "active": index == 0,
+            })
+
+        return {
+            "viewer_role": current_user["role"],
+            "quick_panel": [
+                {
+                    "label": "Active Robots",
+                    "value": format_count(active_robots),
+                    "badgeClassName": "bg-green-100 text-green-700",
+                },
+                {
+                    "label": "Pending Deliveries",
+                    "value": format_count(pending_deliveries),
+                    "badgeClassName": "bg-orange-100 text-orange-700",
+                },
+            ],
+            "cards": cards,
+            "map_points": map_points,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load admin orders: {str(e)}")
 
 
 # Single product detail with stock info

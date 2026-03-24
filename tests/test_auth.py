@@ -286,3 +286,95 @@ class TestProducts:
     def test_product_not_found(self):
         response = client.get("/api/products/99999")
         assert response.status_code == 404
+
+
+class TestAdminDashboard:
+    """GET /api/admin/dashboard"""
+
+    def test_admin_dashboard_requires_admin_role(self):
+        customer_login = client.post("/api/auth/login", json={
+            "email": "customer@ofs.com",
+            "password": "admin123",
+        })
+        assert customer_login.status_code == 200
+
+        response = client.get("/api/admin/dashboard", cookies=customer_login.cookies)
+        assert response.status_code == 403
+
+    def test_admin_dashboard_returns_expected_shape_for_manager(self):
+        admin_login = client.post("/api/auth/login", json={
+            "email": "admin@ofs.com",
+            "password": "admin123",
+        })
+        assert admin_login.status_code == 200
+
+        response = client.get("/api/admin/dashboard", cookies=admin_login.cookies)
+        assert response.status_code == 200
+
+        data = response.json()
+        assert "stats" in data
+        assert "activity" in data
+        assert "quick_panel" in data
+        assert "revenue_chart" in data
+        assert len(data["stats"]) == 4
+
+
+class TestAdminProducts:
+    """GET /api/admin/products"""
+
+    def test_admin_products_requires_admin_role(self):
+        customer_login = client.post("/api/auth/login", json={
+            "email": "customer@ofs.com",
+            "password": "admin123",
+        })
+        assert customer_login.status_code == 200
+
+        response = client.get("/api/admin/products", cookies=customer_login.cookies)
+        assert response.status_code == 403
+
+    def test_admin_products_returns_inventory_payload(self):
+        employee_login = client.post("/api/auth/login", json={
+            "email": "employee@ofs.com",
+            "password": "admin123",
+        })
+        assert employee_login.status_code == 200
+
+        response = client.get("/api/admin/products", cookies=employee_login.cookies)
+        assert response.status_code == 200
+
+        data = response.json()
+        assert "summary" in data
+        assert "quick_panel" in data
+        assert "categories" in data
+        assert "items" in data
+        assert isinstance(data["items"], list)
+
+
+class TestAdminOrders:
+    """GET /api/admin/orders"""
+
+    def test_admin_orders_requires_admin_role(self):
+        customer_login = client.post("/api/auth/login", json={
+            "email": "customer@ofs.com",
+            "password": "admin123",
+        })
+        assert customer_login.status_code == 200
+
+        response = client.get("/api/admin/orders", cookies=customer_login.cookies)
+        assert response.status_code == 403
+
+    def test_admin_orders_returns_orders_payload(self):
+        employee_login = client.post("/api/auth/login", json={
+            "email": "employee@ofs.com",
+            "password": "admin123",
+        })
+        assert employee_login.status_code == 200
+
+        response = client.get("/api/admin/orders", cookies=employee_login.cookies)
+        assert response.status_code == 200
+
+        data = response.json()
+        assert "quick_panel" in data
+        assert "cards" in data
+        assert "map_points" in data
+        assert isinstance(data["cards"], list)
