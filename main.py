@@ -279,8 +279,10 @@ def get_products(
                 p.category,
                 p.is_available,
                 p.is_organic,
-                p.image_url
+                p.image_url,
+                COALESCE(i.quantity, 0) AS stock
             FROM products p
+            LEFT JOIN inventory i ON i.product_id = p.id
             {where_clause}
             {order_clause}
             LIMIT :limit OFFSET :offset
@@ -301,6 +303,7 @@ def get_products(
                 "is_organic": bool(row["is_organic"]) if row["is_organic"] is not None else False,
                 "image_url": row["image_url"],
                 "image": row["image_url"],
+                "stock": int(row["stock"]),
             })
 
         return {
