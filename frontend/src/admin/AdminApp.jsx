@@ -5,6 +5,7 @@ import OrdersPage from './pages/OrdersPage';
 import DeliveriesPage from './pages/DeliveriesPage';
 import RobotsPage from './pages/RobotsPage';
 import RevenuePage from './pages/RevenuePage';
+import InviteCodesPage from './pages/InviteCodesPage';
 import { getStoredRole } from '../utils/authSession';
 
 function sectionFromPath(path) {
@@ -33,6 +34,11 @@ export default function AdminApp({ path }) {
         return <DashboardPage />;
       }
       return <RevenuePage />;
+    case 'invite-codes':
+      if (getStoredRole() !== 'manager') {
+        return <DashboardPage />;
+      }
+      return <InviteCodesPage />;
     default:
       return <DashboardPage />;
   }

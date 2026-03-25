@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 import jwt
 import datetime
 import os
+import secrets
 
 load_dotenv()
 
@@ -166,6 +167,12 @@ class RegisterRequest(BaseModel):
     name: str
     email: str
     password: str
+    invite_code: Optional[str] = None
+
+
+class GenerateCodeRequest(BaseModel):
+    role: str  # "employee" or "manager"
+    note: Optional[str] = None
 
 
 # ── Routes ──────────────────────────────────────────────────────────────────
@@ -181,19 +188,41 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=409, detail="Email already registered")
 
-    db.execute(
+    # Resolve role from invite code (defaults to customer)
+    role = "customer"
+    code_row = None
+    if body.invite_code:
+        code_row = db.execute(
+            text("SELECT id, role FROM invite_codes WHERE code = :code AND used_by IS NULL"),
+            {"code": body.invite_code}
+        ).fetchone()
+        if not code_row:
+            raise HTTPException(status_code=400, detail="Invalid or already used invite code")
+        role = code_row.role
+
+    result = db.execute(
         text("""
             INSERT INTO users (name, email, password_hash, role)
-            VALUES (:name, :email, :password_hash, 'customer')
+            VALUES (:name, :email, :password_hash, :role)
         """),
         {
             "name": body.name,
             "email": body.email,
             "password_hash": hash_password(body.password),
+            "role": role,
         }
     )
+    new_user_id = result.lastrowid
+
+    # Mark invite code as used
+    if code_row:
+        db.execute(
+            text("UPDATE invite_codes SET used_by = :uid, used_at = NOW() WHERE id = :cid"),
+            {"uid": new_user_id, "cid": code_row.id}
+        )
+
     db.commit()
-    return {"message": "Registration successful"}
+    return {"message": "Registration successful", "role": role}
 
 
 # Runs when user clicks "Sign in"
@@ -793,6 +822,136 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load product: {str(e)}")
+
+
+# ── Invite code endpoints ────────────────────────────────────────────────────
+
+@app.post("/api/admin/invite-codes")
+def generate_invite_code(
+    body: GenerateCodeRequest,
+    current_user: dict = Depends(require_role("manager")),
+    db: Session = Depends(get_db),
+):
+    """
+    Managers can generate employee codes.
+    Only the lead admin can generate manager codes.
+    """
+    if body.role not in ("employee", "manager"):
+        raise HTTPException(status_code=400, detail="role must be 'employee' or 'manager'")
+
+    if body.role == "manager":
+        user_row = db.execute(
+            text("SELECT is_lead_admin FROM users WHERE id = :id"),
+            {"id": current_user["userId"]}
+        ).fetchone()
+        if not user_row or not user_row.is_lead_admin:
+            raise HTTPException(status_code=403, detail="Only the lead admin can generate manager codes")
+
+    code = "OFS-" + secrets.token_urlsafe(8).upper()[:8]
+
+    db.execute(
+        text("""
+            INSERT INTO invite_codes (code, role, created_by, note)
+            VALUES (:code, :role, :created_by, :note)
+        """),
+        {
+            "code": code,
+            "role": body.role,
+            "created_by": current_user["userId"],
+            "note": body.note,
+        }
+    )
+    db.commit()
+    return {"code": code, "role": body.role}
+
+
+@app.get("/api/admin/invite-codes")
+def list_invite_codes(
+    current_user: dict = Depends(require_role("manager")),
+    db: Session = Depends(get_db),
+):
+    """Returns all invite codes. Lead admin sees all; regular managers see only codes they created."""
+    user_row = db.execute(
+        text("SELECT is_lead_admin FROM users WHERE id = :id"),
+        {"id": current_user["userId"]}
+    ).fetchone()
+    is_lead = user_row and user_row.is_lead_admin
+
+    if is_lead:
+        rows = db.execute(
+            text("""
+                SELECT ic.id, ic.code, ic.role, ic.note, ic.created_at, ic.used_at,
+                       creator.name AS created_by_name,
+                       used_user.name AS used_by_name
+                FROM invite_codes ic
+                JOIN users creator ON creator.id = ic.created_by
+                LEFT JOIN users used_user ON used_user.id = ic.used_by
+                ORDER BY ic.created_at DESC
+            """)
+        ).mappings().all()
+    else:
+        rows = db.execute(
+            text("""
+                SELECT ic.id, ic.code, ic.role, ic.note, ic.created_at, ic.used_at,
+                       creator.name AS created_by_name,
+                       used_user.name AS used_by_name
+                FROM invite_codes ic
+                JOIN users creator ON creator.id = ic.created_by
+                LEFT JOIN users used_user ON used_user.id = ic.used_by
+                WHERE ic.created_by = :uid
+                ORDER BY ic.created_at DESC
+            """),
+            {"uid": current_user["userId"]}
+        ).mappings().all()
+
+    return {
+        "is_lead_admin": is_lead,
+        "codes": [
+            {
+                "id": row["id"],
+                "code": row["code"],
+                "role": row["role"],
+                "note": row["note"],
+                "created_by": row["created_by_name"],
+                "used_by": row["used_by_name"],
+                "used": row["used_at"] is not None,
+                "created_at": str(row["created_at"]),
+            }
+            for row in rows
+        ],
+    }
+
+
+@app.delete("/api/admin/invite-codes/{code_id}")
+def revoke_invite_code(
+    code_id: int,
+    current_user: dict = Depends(require_role("manager")),
+    db: Session = Depends(get_db),
+):
+    """Revoke (delete) an unused invite code. Managers can only revoke their own codes unless lead admin."""
+    code_row = db.execute(
+        text("SELECT id, created_by, used_by FROM invite_codes WHERE id = :id"),
+        {"id": code_id}
+    ).fetchone()
+
+    if not code_row:
+        raise HTTPException(status_code=404, detail="Invite code not found")
+
+    if code_row.used_by is not None:
+        raise HTTPException(status_code=400, detail="Cannot revoke a code that has already been used")
+
+    user_row = db.execute(
+        text("SELECT is_lead_admin FROM users WHERE id = :id"),
+        {"id": current_user["userId"]}
+    ).fetchone()
+    is_lead = user_row and user_row.is_lead_admin
+
+    if not is_lead and code_row.created_by != current_user["userId"]:
+        raise HTTPException(status_code=403, detail="You can only revoke codes you created")
+
+    db.execute(text("DELETE FROM invite_codes WHERE id = :id"), {"id": code_id})
+    db.commit()
+    return {"message": "Invite code revoked"}
 
 
 # Check that database & server running

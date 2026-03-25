@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { key: 'deliveries', label: 'Deliveries', href: '/admin/deliveries', icon: 'fas fa-truck' },
   { key: 'robots', label: 'Robots', href: '/admin/robots', icon: 'fas fa-robot' },
   { key: 'revenue', label: 'Revenue', href: '/admin/revenue', icon: 'fas fa-chart-line' },
+  { key: 'invite-codes', label: 'Invite Codes', href: '/admin/invite-codes', icon: 'fas fa-ticket-alt', managerOnly: true },
 ];
 
 function handleSignOut() {
@@ -83,7 +84,9 @@ export default function AdminShell({
   const storedName = getStoredName();
   const displayName = storedName || 'Admin User';
   const isEmployee = getStoredRole() === 'employee';
-  const visibleNavItems = isEmployee ? NAV_ITEMS.filter(item => item.key !== 'revenue') : NAV_ITEMS;
+  const visibleNavItems = isEmployee
+    ? NAV_ITEMS.filter(item => item.key !== 'revenue' && !item.managerOnly)
+    : NAV_ITEMS;
 
   return (
     <div className="admin-portal">

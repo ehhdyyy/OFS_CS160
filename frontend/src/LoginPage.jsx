@@ -38,6 +38,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -74,7 +75,12 @@ export default function LoginPage() {
     if (!name.trim()) { setErrorMessage("Please enter your name"); return; }
     setIsLoading(true);
     try {
-      await apiPost("/api/auth/register", { name, email, password });
+      await apiPost("/api/auth/register", {
+        name,
+        email,
+        password,
+        ...(inviteCode.trim() ? { invite_code: inviteCode.trim() } : {}),
+      });
       window.location.href = "/login?tab=login";
       setErrorMessage("");
     } catch (err) {
@@ -546,6 +552,21 @@ export default function LoginPage() {
                         required
                       />
                       <span className="input-icon">👤</span>
+                    </div>
+                  </div>
+                )}
+
+                {mode === "register" && (
+                  <div className="field">
+                    <label>Invite Code <span style={{ fontWeight: 400, color: 'var(--text-light)' }}>(optional)</span></label>
+                    <div className="input-wrap">
+                      <input
+                        type="text"
+                        placeholder="e.g. OFS-ABC12345"
+                        value={inviteCode}
+                        onChange={e => setInviteCode(e.target.value)}
+                      />
+                      <span className="input-icon">🎟️</span>
                     </div>
                   </div>
                 )}
