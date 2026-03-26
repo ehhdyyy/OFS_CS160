@@ -205,10 +205,28 @@
 }
 
 .customer-app .customer-product-bottom button:disabled {
-  background: rgb(253, 57, 57, 0.92);
-  color: white;
+  background: #d1d5db;
+  color: #6b7280;
   cursor: not-allowed;
 }
+
+.customer-app .customer-product-add-buttons {
+  display:flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.customer-app .customer-product-bottom .button-decrease {
+  background:#f59e0b;
+  opacity: 0.9;
+}
+
+.customer-app .customer-product-bottom .button-decrease:hover{
+  background:#f59e0b;
+}
+
+
 
 /*=== CART PANEL ===*/
 
@@ -305,6 +323,13 @@
   background: #f0fdf4;
   border-color: #22c55e
 }
+
+.customer-app .customer-cart-controls button:disabled {
+   background: rgb(253, 57, 57, 0.92);
+  color: white;
+  cursor: not-allowed;
+}
+
 
 .customer-app .customer-cart-summary {
   margin-top: 18px;
