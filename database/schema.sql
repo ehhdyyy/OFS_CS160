@@ -12,6 +12,7 @@ CREATE TABLE users (
     email         VARCHAR(255) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     role          ENUM('customer', 'employee', 'manager') NOT NULL DEFAULT 'customer',
+    is_lead_admin BOOLEAN NOT NULL DEFAULT FALSE,
     address       VARCHAR(255),
     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -171,27 +172,17 @@ CREATE TABLE status_history (
     FOREIGN KEY (changed_by) REFERENCES users(id)
 );
 
--- Seed data: test users
-INSERT INTO users (name, email, password_hash, role) VALUES
-    ('Lucas',      'customer@ofs.com', '$2b$12$placeholder_hash_customer', 'customer'),
-    ('Admin User', 'admin@ofs.com',    '$2b$12$placeholder_hash_admin',    'manager');
-
--- Seed data: sample products
-INSERT INTO products (name, description, price, weight_lbs, category, is_available, is_organic, image_url) VALUES
-    ('Organic Apples',     'Crisp Fuji apples, locally grown',     4.99,  2.00, 'Fruit',     TRUE, TRUE,  NULL),
-    ('Organic Bananas',    'Fair-trade organic bananas, 1 bunch',  1.99,  1.00, 'Fruit',     TRUE, TRUE,  NULL),
-    ('Organic Granola',    'Honey oat granola, 12oz bag',          6.49,  0.75, 'Pantry',    TRUE, TRUE,  NULL),
-    ('Organic Whole Milk', '1 gallon, grass-fed',                  7.99, 10.00, 'Dairy',     TRUE, TRUE,  NULL),
-    ('Organic Spinach',    'Baby spinach, 5oz clamshell',          3.99,  0.31, 'Vegetable', TRUE, TRUE,  NULL);
-
--- Seed inventory
-INSERT INTO inventory (product_id, quantity) VALUES
-    (1, 50),
-    (2, 80),
-    (3, 30),
-    (4, 20),
-    (5, 60);
-
--- Seed one robot
-INSERT INTO robots (name, status, battery_pct) VALUES ('Robot-01', 'available', 100);
+-- Invite Codes
+CREATE TABLE invite_codes (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    code        VARCHAR(20) NOT NULL UNIQUE,
+    role        ENUM('employee', 'manager') NOT NULL,
+    created_by  INT NOT NULL,
+    used_by     INT DEFAULT NULL,
+    note        VARCHAR(255),
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    used_at     TIMESTAMP DEFAULT NULL,
+    FOREIGN KEY (created_by) REFERENCES users(id),
+    FOREIGN KEY (used_by)    REFERENCES users(id)
+);
 
