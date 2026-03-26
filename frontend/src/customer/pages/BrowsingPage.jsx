@@ -52,7 +52,7 @@ function getFallbackImage(product) {
   return makePlaceholder('OFS Product');
 }
 
-export default function BrowsingPage() {
+export default function BrowsingPage( {cart, setCart, addToCart}) {
   const [products, setProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
@@ -63,7 +63,6 @@ export default function BrowsingPage() {
     weightRange: 'all',
     availability: 'all',
   });
-  const [cart, setCart] = useState([]);
 
   const storedName = getStoredName();
   const profileInitial = storedName?.trim()?.charAt(0)?.toUpperCase() || 'C';
@@ -128,36 +127,20 @@ export default function BrowsingPage() {
     if (range === 'over10') return weightLbs > 10;
     return true;
   }
-
-  function addToCart(product) {
-    setCart((previous) => {
-      const existingItem = previous.find((item) => item.id === product.id);
-
-      if (existingItem) {
-        return previous.map((item) => (
-          item.id === product.id ? { ...item, qty: item.qty + 1 } : item
-        ));
-      }
-
-      return [
-        ...previous,
-        {
-          id: product.id,
-          name: product.name,
-          price: Number(product.price),
-          qty: 1,
-          weight_lbs: product.weight_lbs
-        },
-      ];
-    });
-  }
-
+  
   function changeQuantity(productId, delta) {
     setCart((previous) => (
       previous
-        .map((item) => (
-          item.id === productId ? { ...item, qty: item.qty + delta } : item
-        ))
+        .map((item) => {
+          if(item.id !== productId) return item;
+
+          const product = products.find((p) => p.id === item.id);
+          if(!product) return item;
+          const newQty = item.qty + delta;
+          if(delta > 0 && newQty > product.stock) return item;
+          
+          return {...item, qty: newQty};
+        })
         .filter((item) => item.qty > 0)
     ));
   }
@@ -406,25 +389,60 @@ export default function BrowsingPage() {
             </div>
           ) : (
             <div className="customer-product-grid">
-              {filteredProducts.map((product) => (
-                <div className="customer-product-card" key={product.id} onClick={() => { window.location.href = `/product/${product.id}`; }} style={{ cursor: 'pointer' }}>
-                  <img src={getFallbackImage(product)} alt={product.name} />
-                  <p className="customer-product-category">{product.category}</p>
-                  <h3>{product.name}</h3>
-                  <p className="customer-product-weight">{Number(product.weight_lbs).toFixed(2)} lbs</p>
-                  <div className="customer-product-bottom">
-                    <span className="customer-product-price">${Number(product.price).toFixed(2)}</span>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); addToCart(product); }}
-                      disabled={!product.is_available}
-                      title={product.is_available ? 'Add to cart' : 'Out of stock'}
-                    >
-                      +
-                    </button>
+              {filteredProducts.map((product) => {
+                const cartItem = cart.find((item) => item.id === product.id);
+                const cartQty = cartItem?.qty ?? 0;
+                
+                return(
+                  <div className="customer-product-card" key={product.id} onClick={() => { window.location.href = `/product/${product.id}`; }} style={{ cursor: 'pointer' }}>
+                    <img src={getFallbackImage(product)} alt={product.name} />
+                    <div className="customer-product-top">
+                      <p className="customer-product-category">{product.category}</p>
+                      <span className={`customer-product-stock-quantity ${
+                          product.stock === 0 ? "out" : 
+                          product.stock < 10  ? "low" : "in"
+                      }`}>{product.stock > 0 ? `Stock: ${product.stock}` : "Out of Stock"}</span>
+                    </div>
+                    <h3>{product.name}</h3>
+                    <p className="customer-product-weight">{Number(product.weight_lbs).toFixed(2)} lbs</p>
+                    <div className="customer-product-bottom">
+                      <span className="customer-product-price">${Number(product.price).toFixed(2)}</span>
+                      <div onClick={(e) => e.stopPropagation()} className="customer-product-add-buttons">
+                        {cartQty === 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => addToCart(product, 1)}
+                            disabled={!product.is_available}
+                            title={product.is_available ? 'Add to cart' : 'Out of stock'}
+                          >
+                            +
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="button-decrease"
+                              onClick={() => changeQuantity(product.id, -1)}
+                            >
+                            -
+                            </button>
+
+                            <span>{cartQty}</span>
+
+                            <button
+                              type="button"
+                              onClick={() => changeQuantity(product.id, 1)}
+                              disabled={cartQty >= product.stock}
+                            >
+                              +
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </main>
@@ -457,7 +475,9 @@ export default function BrowsingPage() {
                     <div className="customer-cart-controls">
                       <button type="button" onClick={() => changeQuantity(item.id, -1)}>−</button>
                       <span>{item.qty}</span>
-                      <button type="button" onClick={() => changeQuantity(item.id, 1)}>+</button>
+                      <button type="button" 
+                        onClick={() => changeQuantity(item.id, 1)} 
+                        disabled={item.qty >= (products.find((p) => p.id ===item.id)?.stock ?? 0)}>+</button>
                     </div>
                   </div>
                 ))}

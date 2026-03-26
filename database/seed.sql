@@ -21,6 +21,17 @@ INSERT INTO users (name, email, password_hash, role, address) VALUES
   ('Emily Chen',    'emily@gmail.com',  '$2b$12$/Sna3KjXzGLdAAzYGqV9UOo4Pi2i8rHhB7B3H9uKmvXO4KVMoBE.W', 'customer', '789 W San Carlos St, San Jose, CA 95126')
 ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), role = VALUES(role);
 
+-- For newer MySQL workbench versions where VALUES insert is deprecated
+-- INSERT INTO users (name, email, password_hash, role) VALUES
+--   ('Admin',         'admin@ofs.com',    '$2b$12$/Sna3KjXzGLdAAzYGqV9UOo4Pi2i8rHhB7B3H9uKmvXO4KVMoBE.W', 'manager'),
+--   ('Test Employee', 'employee@ofs.com', '$2b$12$/Sna3KjXzGLdAAzYGqV9UOo4Pi2i8rHhB7B3H9uKmvXO4KVMoBE.W', 'employee'),
+--   ('Test Customer', 'customer@ofs.com', '$2b$12$/Sna3KjXzGLdAAzYGqV9UOo4Pi2i8rHhB7B3H9uKmvXO4KVMoBE.W', 'customer'),
+--   ('Maria Santos',  'maria@sjsu.edu',   '$2b$12$/Sna3KjXzGLdAAzYGqV9UOo4Pi2i8rHhB7B3H9uKmvXO4KVMoBE.W', 'customer', '123 E San Fernando St, San Jose, CA 95112'),
+--   ('Kevin Nguyen',  'kevin@sjsu.edu',   '$2b$12$/Sna3KjXzGLdAAzYGqV9UOo4Pi2i8rHhB7B3H9uKmvXO4KVMoBE.W', 'customer', '456 S 4th St, San Jose, CA 95112'),
+--   ('Emily Chen',    'emily@gmail.com',  '$2b$12$/Sna3KjXzGLdAAzYGqV9UOo4Pi2i8rHhB7B3H9uKmvXO4KVMoBE.W', 'customer', '789 W San Carlos St, San Jose, CA 95126') AS new
+-- ON DUPLICATE KEY UPDATE
+--   password_hash = new.password_hash,
+--   role = new.role;
 
 -- ── Products ───────────────────────────────────────────────────────────────
 -- Clear existing products so we can re-seed cleanly

@@ -55,7 +55,9 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       const data = await apiPost("/api/auth/login", { email, password });
+      
       const { adminEnabled } = persistFrontendSession({
+        userId: data.userId,
         email,
         name: data.name,
         role: data.role,

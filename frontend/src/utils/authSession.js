@@ -1,6 +1,7 @@
 export const ADMIN_EMAIL = 'admin@ofs.com';
 
 const STORAGE_KEYS = {
+  userId: 'ofs-user-id',
   email: 'ofs-user-email',
   name: 'ofs-user-name',
   adminUi: 'ofs-admin-ui',
@@ -27,7 +28,7 @@ export function isAdminEmail(email = '') {
   return normalizeEmail(email) === ADMIN_EMAIL;
 }
 
-export function persistFrontendSession({ email = '', name = '', role = '' }) {
+export function persistFrontendSession({ userId = '', email = '', name = '', role = '' }) {
   const storage = safeSessionStorage();
   const normalizedEmail = normalizeEmail(email);
   const normalizedRole = String(role || '').trim().toLowerCase();
@@ -38,6 +39,7 @@ export function persistFrontendSession({ email = '', name = '', role = '' }) {
   const adminEnabled = isAdminEmail(normalizedEmail) || normalizedRole === 'admin' || normalizedRole === 'manager' || normalizedRole === 'employee';
 
   if (storage) {
+    storage.setItem(STORAGE_KEYS.userId, String(userId || ''));
     storage.setItem(STORAGE_KEYS.email, normalizedEmail);
     storage.setItem(STORAGE_KEYS.name, name);
     storage.setItem(STORAGE_KEYS.adminUi, adminEnabled ? 'true' : 'false');
@@ -45,6 +47,7 @@ export function persistFrontendSession({ email = '', name = '', role = '' }) {
   }
 
   return {
+    userId: String(userId || ''),
     normalizedEmail,
     normalizedRole,
     adminEnabled,
@@ -53,7 +56,6 @@ export function persistFrontendSession({ email = '', name = '', role = '' }) {
 
 export function clearFrontendSession() {
   const storage = safeSessionStorage();
-
   if (!storage) {
     return;
   }
@@ -64,6 +66,11 @@ export function clearFrontendSession() {
 export function isAdminUiEnabled() {
   const storage = safeSessionStorage();
   return storage?.getItem(STORAGE_KEYS.adminUi) === 'true';
+}
+
+export function getStoredUserId() {
+  const storage = safeSessionStorage();
+  return storage?.getItem(STORAGE_KEYS.userId) || '';
 }
 
 export function getStoredEmail() {
