@@ -8,11 +8,11 @@ USE ofs_db;
 
 -- ── Users ──────────────────────────────────────────────────────────────────
 -- Upsert test accounts (password: admin123 for all)
-INSERT INTO users (name, email, password_hash, role) VALUES
-  ('Admin',         'admin@ofs.com',    '$2b$12$/Sna3KjXzGLdAAzYGqV9UOo4Pi2i8rHhB7B3H9uKmvXO4KVMoBE.W', 'manager'),
-  ('Test Employee', 'employee@ofs.com', '$2b$12$/Sna3KjXzGLdAAzYGqV9UOo4Pi2i8rHhB7B3H9uKmvXO4KVMoBE.W', 'employee'),
-  ('Test Customer', 'customer@ofs.com', '$2b$12$/Sna3KjXzGLdAAzYGqV9UOo4Pi2i8rHhB7B3H9uKmvXO4KVMoBE.W', 'customer')
-ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), role = VALUES(role);
+INSERT INTO users (name, email, password_hash, role, is_lead_admin) VALUES
+  ('Admin',         'admin@ofs.com',    '$2b$12$/Sna3KjXzGLdAAzYGqV9UOo4Pi2i8rHhB7B3H9uKmvXO4KVMoBE.W', 'manager',  TRUE),
+  ('Test Employee', 'employee@ofs.com', '$2b$12$/Sna3KjXzGLdAAzYGqV9UOo4Pi2i8rHhB7B3H9uKmvXO4KVMoBE.W', 'employee', FALSE),
+  ('Test Customer', 'customer@ofs.com', '$2b$12$/Sna3KjXzGLdAAzYGqV9UOo4Pi2i8rHhB7B3H9uKmvXO4KVMoBE.W', 'customer', FALSE)
+ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), role = VALUES(role), is_lead_admin = VALUES(is_lead_admin);
 
 -- Extra demo customers
 INSERT INTO users (name, email, password_hash, role, address) VALUES
