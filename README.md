@@ -68,7 +68,7 @@ Replace `YOUR_MYSQL_PASSWORD` with your actual MySQL password
 
 ### Step 4 - Run Backend
 ```bash
-univorn main:app --reload --port 8000
+uvicorn main:app --reload --port 8000
 ```
 ---
 
