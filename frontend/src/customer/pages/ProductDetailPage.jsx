@@ -34,7 +34,7 @@ function getFallbackImage(product) {
   return makePlaceholder('OFS Product');
 }
 
-export default function ProductDetailPage({ productId, cart, setCart, addToCart }) {
+export default function ProductDetailPage({ productId, cart, addToCart, changeQuantity }) {
   const [product, setProduct] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
@@ -43,6 +43,10 @@ export default function ProductDetailPage({ productId, cart, setCart, addToCart 
 
   const storedName = getStoredName();
   const profileInitial = storedName?.trim()?.charAt(0)?.toUpperCase() || 'C';
+
+  const existingCartItem = cart.find((item) => item.id === product?.id);
+  const quantityAlreadyInCart = Number(existingCartItem?.quantity || 0);
+  const remainingStock = Math.max(0, Number(product?.stock || 0) - quantityAlreadyInCart);
 
   useEffect(() => {
     async function loadProduct() {
@@ -74,14 +78,26 @@ export default function ProductDetailPage({ productId, cart, setCart, addToCart 
     loadProduct();
   }, [productId]);
 
-  function handleAddToCart() {
-    if (!product || !product.is_available || product.stock <= 0) return;
-    setAddedToCart(true);
+    useEffect(() => {
+    if (remainingStock <= 0) {
+      setQuantity(1);
+      return;
+    }
 
-    addToCart(product, quantity);
+    setQuantity((previous) => Math.min(previous, remainingStock));
+  }, [remainingStock]);
+
+  function handleAddToCart() {
+    if (!product || !product.is_available || remainingStock <= 0) return;
+
+    const quantityToAdd = Math.min(quantity, remainingStock);
+    if (quantityToAdd <= 0) return;
+
+    setAddedToCart(true);
+    addToCart(product, quantityToAdd);
 
     setTimeout(() => {
-      window.location.href = "/home"; 
+      window.location.href = "/home";
     }, 500);
   }
 
@@ -183,12 +199,17 @@ export default function ProductDetailPage({ productId, cart, setCart, addToCart 
                   <span>{quantity}</span>
                   <button
                     type="button"
-                    onClick={() => setQuantity((q) => Math.min(product.stock, q + 1))}
-                    disabled={quantity >= product.stock}
+                    onClick={() => setQuantity((q) => Math.min(remainingStock, q + 1))}
+                    disabled={remainingStock <= 0 || quantity >= remainingStock}
                   >
                     +
                   </button>
                 </div>
+                <p className="pdp-stock-note">
+                  {remainingStock > 0
+                    ? `${remainingStock} more available to add`
+                    : 'Maximum already in cart'}
+                </p>
               </div>
 
               <button
@@ -197,7 +218,11 @@ export default function ProductDetailPage({ productId, cart, setCart, addToCart 
                 onClick={handleAddToCart}
                 disabled={!product.is_available || product.stock <= 0}
               >
-                {addedToCart ? '✓ Added to Cart' : `Add to Cart — $${(Number(product.price) * quantity).toFixed(2)}`}
+                {addedToCart
+                  ? '✓ Added to Cart'
+                  : remainingStock <= 0
+                    ? 'Already at max in cart'
+                    : `Add to Cart — $${(Number(product.price || 0) * quantity).toFixed(2)}`}
               </button>
             </div>
           </div>
