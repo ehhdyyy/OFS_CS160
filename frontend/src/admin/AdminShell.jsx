@@ -1,14 +1,52 @@
 import { clearFrontendSession, getStoredName, getStoredRole } from '../utils/authSession';
 
 const NAV_ITEMS = [
-  { key: 'dashboard', label: 'Dashboard', href: '/admin/dashboard', icon: 'fas fa-home' },
-  { key: 'products', label: 'Products', href: '/admin/products', icon: 'fas fa-box' },
-  { key: 'orders', label: 'Orders', href: '/admin/orders', icon: 'fas fa-shopping-cart' },
+  { key: 'inventory', label: 'Inventory', href: '/admin/inventory', icon: 'fas fa-box' },
   { key: 'deliveries', label: 'Deliveries', href: '/admin/deliveries', icon: 'fas fa-truck' },
   { key: 'robots', label: 'Robots', href: '/admin/robots', icon: 'fas fa-robot' },
-  { key: 'revenue', label: 'Revenue', href: '/admin/revenue', icon: 'fas fa-chart-line' },
-  { key: 'invite-codes', label: 'Invite Codes', href: '/admin/invite-codes', icon: 'fas fa-ticket-alt', managerOnly: true },
+  {
+    key: 'financial',
+    label: 'Financial',
+    href: '/admin/financial',
+    icon: 'fas fa-chart-line',
+    employeeRestricted: true,
+  },
+  {
+    key: 'invite-codes',
+    label: 'Invite Codes',
+    href: '/admin/invite-codes',
+    icon: 'fas fa-ticket-alt',
+    managerOnly: true,
+  },
 ];
+
+const NAV_KEY_ALIASES = {
+  dashboard: 'inventory',
+  products: 'inventory',
+  inventory: 'inventory',
+  orders: 'deliveries',
+  deliveries: 'deliveries',
+  robots: 'robots',
+  revenue: 'financial',
+  financial: 'financial',
+  'invite-codes': 'invite-codes',
+};
+
+function normalizeNavKey(key) {
+  return NAV_KEY_ALIASES[String(key || '').toLowerCase()] || 'inventory';
+}
+
+function canViewNavItem(item, role) {
+  if (item.managerOnly) {
+    return role === 'manager';
+  }
+
+  if (item.employeeRestricted) {
+    return role !== 'employee';
+  }
+
+  return true;
+}
 
 function handleSignOut() {
   clearFrontendSession();
@@ -79,14 +117,12 @@ export default function AdminShell({
   headerAction,
   children,
   quickPanel = { title: 'Quick Filters', items: [] },
-  topSearchPlaceholder = 'Search...',
 }) {
+  const role = getStoredRole();
+  const normalizedActiveNav = normalizeNavKey(activeNav);
   const storedName = getStoredName();
   const displayName = storedName || 'Admin User';
-  const isEmployee = getStoredRole() === 'employee';
-  const visibleNavItems = isEmployee
-    ? NAV_ITEMS.filter(item => item.key !== 'revenue' && !item.managerOnly)
-    : NAV_ITEMS;
+  const visibleNavItems = NAV_ITEMS.filter((item) => canViewNavItem(item, role));
 
   return (
     <div className="admin-portal">
@@ -99,21 +135,7 @@ export default function AdminShell({
             <h1>OFS Admin Portal</h1>
           </div>
 
-          <div className="admin-top-search">
-            <i className="fas fa-search admin-top-search-icon" aria-hidden="true" />
-            <input
-              type="text"
-              placeholder={topSearchPlaceholder}
-              className="admin-top-search-input"
-            />
-          </div>
-
           <div className="admin-top-actions">
-            <button type="button" className="admin-notification" aria-label="Notifications">
-              <i className="far fa-bell" aria-hidden="true" />
-              <span className="admin-notification-badge" />
-            </button>
-
             <button
               type="button"
               onClick={handleSignOut}
@@ -133,7 +155,7 @@ export default function AdminShell({
           <aside className="admin-sidebar custom-scrollbar">
             <ul className="admin-nav-list">
               {visibleNavItems.map((item) => {
-                const active = item.key === activeNav;
+                const active = item.key === normalizedActiveNav;
 
                 return (
                   <li key={item.key} className="admin-nav-item">

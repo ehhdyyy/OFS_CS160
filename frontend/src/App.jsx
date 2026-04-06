@@ -88,7 +88,7 @@ export default function App() {
   const adminUiEnabled = isAdminUiEnabled();
 
   if (path === '/admin') {
-    return <RedirectPage to={adminUiEnabled ? '/admin/dashboard' : '/'} />;
+    return <RedirectPage to={adminUiEnabled ? '/admin/inventory' : '/'} />;
   }
 
   if (path.startsWith('/admin/')) {
@@ -117,7 +117,7 @@ export default function App() {
     }
 
     if (adminUiEnabled && path === '/home') {
-      return <RedirectPage to="/admin/dashboard" />;
+      return <RedirectPage to="/admin/inventory" />;
     }
 
     return <CustomerApp />;
