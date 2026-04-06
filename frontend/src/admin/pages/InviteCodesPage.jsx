@@ -9,7 +9,6 @@ export default function InviteCodesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Generate form state
   const [genRole, setGenRole] = useState('employee');
   const [genNote, setGenNote] = useState('');
   const [genLoading, setGenLoading] = useState(false);
@@ -20,16 +19,21 @@ export default function InviteCodesPage() {
     try {
       setIsLoading(true);
       setErrorMessage('');
-      const res = await fetch(`${API_BASE}/api/admin/invite-codes`, { credentials: 'include' });
+
+      const res = await fetch(`${API_BASE}/api/admin/invite-codes`, {
+        credentials: 'include',
+      });
+
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
         throw new Error(payload.detail || 'Failed to load invite codes');
       }
+
       const payload = await res.json();
       setCodes(payload.codes || []);
       setIsLeadAdmin(payload.is_lead_admin || false);
     } catch (err) {
-      setErrorMessage(err.message);
+      setErrorMessage(err.message || 'Failed to load invite codes');
     } finally {
       setIsLoading(false);
     }
@@ -39,63 +43,95 @@ export default function InviteCodesPage() {
     loadCodes();
   }, []);
 
-  async function handleGenerate(e) {
-    e.preventDefault();
+  async function handleGenerate(event) {
+    event.preventDefault();
     setGenLoading(true);
     setGenError('');
     setNewCode('');
+
     try {
       const res = await fetch(`${API_BASE}/api/admin/invite-codes`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: genRole, note: genNote.trim() || null }),
+        body: JSON.stringify({
+          role: genRole,
+          note: genNote.trim() || null,
+        }),
       });
+
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
         throw new Error(payload.detail || 'Failed to generate code');
       }
+
       const payload = await res.json();
       setNewCode(payload.code);
       setGenNote('');
-      loadCodes();
+      await loadCodes();
     } catch (err) {
-      setGenError(err.message);
+      setGenError(err.message || 'Failed to generate code');
     } finally {
       setGenLoading(false);
     }
   }
 
   async function handleRevoke(id) {
-    if (!window.confirm('Revoke this invite code? It will no longer be usable.')) return;
+    if (!window.confirm('Revoke this invite code? It will no longer be usable.')) {
+      return;
+    }
+
     try {
       const res = await fetch(`${API_BASE}/api/admin/invite-codes/${id}`, {
         method: 'DELETE',
         credentials: 'include',
       });
+
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
         throw new Error(payload.detail || 'Failed to revoke code');
       }
-      loadCodes();
+
+      await loadCodes();
     } catch (err) {
-      setErrorMessage(err.message);
+      setErrorMessage(err.message || 'Failed to revoke code');
     }
   }
 
-  const unusedCount = codes.filter((c) => !c.used).length;
-  const usedCount = codes.filter((c) => c.used).length;
+  async function handleCopyCode() {
+    if (!newCode) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(newCode);
+    } catch {
+      setGenError('Could not copy code automatically. Please copy it manually.');
+    }
+  }
+
+  const unusedCount = codes.filter((code) => !code.used).length;
+  const usedCount = codes.filter((code) => code.used).length;
 
   return (
     <AdminShell
       activeNav="invite-codes"
       title="Invite Codes"
-      description="Generate and manage registration codes for employees and managers"
+      description="Generate and manage registration codes for employees and managers."
+      topSearchPlaceholder="Search invite codes..."
       quickPanel={{
         title: 'Overview',
         items: [
-          { label: 'Active Codes', value: String(unusedCount), badgeClassName: 'bg-green-100 text-green-700' },
-          { label: 'Used Codes', value: String(usedCount), badgeClassName: 'bg-gray-100 text-gray-600' },
+          {
+            label: 'Active Codes',
+            value: String(unusedCount),
+            badgeClassName: 'bg-green-100 text-green-700',
+          },
+          {
+            label: 'Used Codes',
+            value: String(usedCount),
+            badgeClassName: 'bg-gray-100 text-gray-600',
+          },
         ],
       }}
     >
@@ -105,9 +141,9 @@ export default function InviteCodesPage() {
         </div>
       ) : null}
 
-      {/* Generate Code Card */}
       <section className="mb-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
         <h3 className="mb-4 text-base font-semibold text-gray-800">Generate New Code</h3>
+
         <form onSubmit={handleGenerate} className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-gray-600" htmlFor="gen-role">
@@ -116,7 +152,7 @@ export default function InviteCodesPage() {
             <select
               id="gen-role"
               value={genRole}
-              onChange={(e) => setGenRole(e.target.value)}
+              onChange={(event) => setGenRole(event.target.value)}
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
             >
               <option value="employee">Employee</option>
@@ -132,7 +168,7 @@ export default function InviteCodesPage() {
               id="gen-note"
               type="text"
               value={genNote}
-              onChange={(e) => setGenNote(e.target.value)}
+              onChange={(event) => setGenNote(event.target.value)}
               placeholder="e.g. For John's onboarding"
               className="w-64 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
             />
@@ -147,9 +183,7 @@ export default function InviteCodesPage() {
           </button>
         </form>
 
-        {genError ? (
-          <p className="mt-3 text-sm text-red-600">{genError}</p>
-        ) : null}
+        {genError ? <p className="mt-3 text-sm text-red-600">{genError}</p> : null}
 
         {newCode ? (
           <div className="mt-4 flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
@@ -160,7 +194,7 @@ export default function InviteCodesPage() {
             </div>
             <button
               type="button"
-              onClick={() => navigator.clipboard.writeText(newCode)}
+              onClick={handleCopyCode}
               className="ml-auto rounded-lg border border-green-300 px-3 py-1.5 text-xs text-green-700 hover:bg-green-100"
             >
               <i className="fas fa-copy mr-1" aria-hidden="true" />
@@ -170,7 +204,6 @@ export default function InviteCodesPage() {
         ) : null}
       </section>
 
-      {/* Codes Table */}
       <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-100 px-6 py-4">
           <h3 className="text-base font-semibold text-gray-800">
@@ -228,9 +261,7 @@ export default function InviteCodesPage() {
                       )}
                     </td>
                     <td className="px-6 py-4 text-gray-500">{code.used_by || '—'}</td>
-                    <td className="px-6 py-4 text-gray-500">
-                      {new Date(code.created_at).toLocaleDateString()}
-                    </td>
+                    <td className="px-6 py-4 text-gray-500">{new Date(code.created_at).toLocaleDateString()}</td>
                     <td className="px-6 py-4">
                       {!code.used ? (
                         <button

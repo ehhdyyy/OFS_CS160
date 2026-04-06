@@ -63,7 +63,7 @@ export default function LoginPage() {
         role: data.role,
       });
 
-      window.location.href = adminEnabled ? "/admin/dashboard" : "/home";
+      window.location.href = adminEnabled ? "/admin/inventory" : "/home";
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
