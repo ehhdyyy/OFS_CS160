@@ -52,7 +52,7 @@ function getFallbackImage(product) {
   return makePlaceholder('OFS Product');
 }
 
-export default function BrowsingPage( {cart, setCart, addToCart}) {
+export default function BrowsingPage( {cart, addToCart, changeQuantity}) {
   const [products, setProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
@@ -128,23 +128,6 @@ export default function BrowsingPage( {cart, setCart, addToCart}) {
     return true;
   }
   
-  function changeQuantity(productId, delta) {
-    setCart((previous) => (
-      previous
-        .map((item) => {
-          if(item.id !== productId) return item;
-
-          const product = products.find((p) => p.id === item.id);
-          if(!product) return item;
-          const newQty = item.qty + delta;
-          if(delta > 0 && newQty > product.stock) return item;
-          
-          return {...item, qty: newQty};
-        })
-        .filter((item) => item.qty > 0)
-    ));
-  }
-
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
       const productName = String(product.name || '').toLowerCase();
@@ -162,17 +145,23 @@ export default function BrowsingPage( {cart, setCart, addToCart}) {
     });
   }, [products, filters]);
 
-  const cartItemCount = useMemo(() => (
-    cart.reduce((total, item) => total + item.qty, 0)
-  ), [cart]);
+const cartItemCount = useMemo(() => (
+  cart.reduce((total, item) => total + Number(item.quantity || 0), 0)
+), [cart]);
 
-  const cartTotal = useMemo(() => (
-    cart.reduce((total, item) => total + item.price * item.qty, 0)
-  ), [cart]);
+const cartTotal = useMemo(() => (
+  cart.reduce(
+    (total, item) => total + Number(item.price || 0) * Number(item.quantity || 0),
+    0
+  )
+), [cart]);
 
-  const weightTotal = useMemo(() => (
-    cart.reduce((total, item) => total + Number(item.weight_lbs || 0) * Number(item.qty || 0), 0)
-  ), [cart]);
+const weightTotal = useMemo(() => (
+  cart.reduce(
+    (total, item) => total + Number(item.weight_lbs || 0) * Number(item.quantity || 0),
+    0
+  )
+), [cart]);
 
   const deliveryFee = useMemo(() => (
     weightTotal > 20 ? 10 : 0  
@@ -466,18 +455,18 @@ export default function BrowsingPage( {cart, setCart, addToCart}) {
                     <div>
                       <p className="customer-cart-product-name">{item.name}</p>
                       <p className="customer-cart-product-price">
-                        ${item.price} each · ${(item.price * item.qty).toFixed(2)}</p>
+                        ${item.price} each · ${(item.price * item.quantity).toFixed(2)}</p>
                       <p className="customer-cart-product-weight">
-                        {item.weight_lbs} lbs each · {((item.weight_lbs || 0) * item.qty).toFixed(2)} lbs
+                        {item.weight_lbs} lbs each · {((item.weight_lbs || 0) * item.quantity).toFixed(2)} lbs
                       </p>
                     </div>
 
                     <div className="customer-cart-controls">
                       <button type="button" onClick={() => changeQuantity(item.id, -1)}>−</button>
-                      <span>{item.qty}</span>
+                      <span>{item.quantity}</span>
                       <button type="button" 
                         onClick={() => changeQuantity(item.id, 1)} 
-                        disabled={item.qty >= (products.find((p) => p.id ===item.id)?.stock ?? 0)}>+</button>
+                        disabled={item.quantity >= (products.find((p) => p.id ===item.id)?.stock ?? 0)}>+</button>
                     </div>
                   </div>
                 ))}
