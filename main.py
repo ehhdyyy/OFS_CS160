@@ -495,7 +495,7 @@ def get_me(auth_token: Optional[str] = Cookie(default=None), db: Session = Depen
 
     payload = decode_jwt(auth_token)
     user = db.execute(
-        text("SELECT id, name, email, role FROM users WHERE id = :id"),
+        text("SELECT id, name, email, role, address FROM users WHERE id = :id"),
         {"id": payload["sub"]},
     ).fetchone()
 
@@ -507,6 +507,7 @@ def get_me(auth_token: Optional[str] = Cookie(default=None), db: Session = Depen
         "name": user.name,
         "email": user.email,
         "role": user.role,
+        "address": user.address or "",
     }
 
 
@@ -814,9 +815,9 @@ def checkout_cart(
             text(
                 """
                 INSERT INTO orders (
-                    user_id, delivery_id, delivery_address, delivery_fee, payment_status, paid_at, created_at
+                    user_id, delivery_id, delivery_address, delivery_fee, total_price, total_weight, payment_status, paid_at, created_at
                 ) VALUES (
-                    :user_id, NULL, :delivery_address, :delivery_fee, 'paid', NOW(), NOW()
+                    :user_id, NULL, :delivery_address, :delivery_fee, :total_price, :total_weight, 'paid', NOW(), NOW()
                 )
                 """
             ),
@@ -824,6 +825,8 @@ def checkout_cart(
                 "user_id": current_user["userId"],
                 "delivery_address": delivery_address,
                 "delivery_fee": float(delivery_fee),
+                "total_price": float(total_price),
+                "total_weight": float(total_weight.quantize(Decimal("0.01"))),
             },
         )
         order_id = int(order_result.lastrowid)

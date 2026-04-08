@@ -65,6 +65,8 @@ CREATE TABLE orders (
     delivery_id      INT NULL,
     delivery_address VARCHAR(255) NOT NULL,
     delivery_fee     DECIMAL(6, 2) NOT NULL DEFAULT 0.00,
+    total_price      DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+    total_weight     DECIMAL(8, 2) NOT NULL DEFAULT 0.00,
     payment_status   ENUM('paid', 'failed', 'refunded') NOT NULL DEFAULT 'paid',
     paid_at          TIMESTAMP NULL DEFAULT NULL,
     created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

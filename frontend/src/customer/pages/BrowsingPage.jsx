@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getStoredName, clearFrontendSession } from '../../utils/authSession';
 import '../styles/browsing.css';
+import CheckoutModal from './CheckoutModal';
 
 const API_BASE = 'http://localhost:8000';
 
@@ -52,10 +53,11 @@ function getFallbackImage(product) {
   return makePlaceholder('OFS Product');
 }
 
-export default function BrowsingPage( {cart, addToCart, changeQuantity}) {
+export default function BrowsingPage({ cart, addToCart, changeQuantity, onCheckout }) {
   const [products, setProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [filters, setFilters] = useState({
     category: [],
     search: '',
@@ -173,6 +175,19 @@ const weightTotal = useMemo(() => (
 
   return (
     <>
+      <CheckoutModal
+        isOpen={showCheckoutModal}
+        onClose={() => setShowCheckoutModal(false)}
+        cart={cart}
+        cartTotal={cartTotal}
+        deliveryFee={deliveryFee}
+        finalTotal={finalTotal}
+        onConfirmPayment={async (deliveryAddress) => {
+          await onCheckout(deliveryAddress);
+          setShowCheckoutModal(false);
+        }}
+      />
+
       <nav className="customer-navbar">
         <a className="customer-navbar-logo" href="/home">
           <div className="customer-logo-icon">🛒</div>
@@ -510,7 +525,7 @@ const weightTotal = useMemo(() => (
                   <strong>${finalTotal.toFixed(2)}</strong>
               </div>                
 
-              <button className="customer-checkout-btn" type="button">Checkout</button>
+              <button className="customer-checkout-btn" type="button" onClick={() => setShowCheckoutModal(true)}>Checkout</button>
               </div>
             
             </>
