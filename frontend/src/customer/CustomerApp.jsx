@@ -3,6 +3,7 @@ import './styles/customer.css';
 import BrowsingPage from './pages/BrowsingPage';
 import ProductDetailPage from './pages/ProductDetailPage';
 import OrderConfirmationPage from './pages/OrderConfirmationPage';
+import { clearFrontendSession } from '../utils/authSession';
 
 const API_BASE = 'http://localhost:8000';
 
@@ -15,6 +16,11 @@ export default function CustomerApp() {
     loadCart();
   }, []);
 
+  function handleUnauthorized() {
+    clearFrontendSession();
+    window.location.href = '/login';
+  }
+
   async function loadCart() {
     try {
       const response = await fetch(`${API_BASE}/api/cart`, {
@@ -22,6 +28,10 @@ export default function CustomerApp() {
         credentials: 'include',
       });
       const data = await response.json();
+      if (response.status === 401) {
+        handleUnauthorized();
+        return;
+      }
       if (!response.ok) throw new Error(data.message || `Failed to load cart (${response.status})`);
       setCart(Array.isArray(data.items) ? data.items : []);
     } catch (error) {
@@ -42,10 +52,16 @@ export default function CustomerApp() {
       });
 
       const data = await response.json();
+      if (response.status === 401) {
+        handleUnauthorized();
+        return false;
+      }
       if (!response.ok) throw new Error(data.detail || `Failed to add item (${response.status})`);
       setCart(Array.isArray(data.items) ? data.items : []);
+      return true;
     } catch (error) {
       console.error('Failed to add to cart:', error);
+      return false;
     }
   }
 
@@ -62,6 +78,10 @@ export default function CustomerApp() {
           credentials: 'include',
         });
         const data = await response.json();
+        if (response.status === 401) {
+          handleUnauthorized();
+          return;
+        }
         if (!response.ok) throw new Error(data.detail || `Failed to remove item (${response.status})`);
         setCart(Array.isArray(data.items) ? data.items : []);
         return;
@@ -74,6 +94,10 @@ export default function CustomerApp() {
         body: JSON.stringify({ quantity: newQty }),
       });
       const data = await response.json();
+      if (response.status === 401) {
+        handleUnauthorized();
+        return;
+      }
       if (!response.ok) throw new Error(data.detail || `Failed to update item (${response.status})`);
       setCart(Array.isArray(data.items) ? data.items : []);
     } catch (error) {
@@ -90,6 +114,10 @@ export default function CustomerApp() {
     });
 
     const data = await response.json();
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('Please log in to complete your purchase.');
+    }
     if (!response.ok) {
       const msg =
         response.status === 400 ? data.detail :
