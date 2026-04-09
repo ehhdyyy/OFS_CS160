@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getStoredName, clearFrontendSession } from '../../utils/authSession';
+import CustomerAccountMenu from '../components/CustomerAccountMenu';
 import '../styles/browsing.css';
 import CheckoutModal from './CheckoutModal';
 
@@ -53,11 +53,27 @@ function getFallbackImage(product) {
   return makePlaceholder('OFS Product');
 }
 
+function getCustomerStockStatus(product) {
+  const stock = Number(product?.stock || 0);
+  const threshold = Number(product?.low_stock_threshold || 10);
+
+  if (!product?.is_available || stock <= 0) {
+    return { tone: 'out', label: 'Out of Stock' };
+  }
+
+  if (stock <= threshold) {
+    return { tone: 'low', label: 'Low Stock' };
+  }
+
+  return { tone: 'in', label: 'In Stock' };
+}
+
 export default function BrowsingPage({ cart, addToCart, changeQuantity, onCheckout }) {
   const [products, setProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+  const [isCartExpanded, setIsCartExpanded] = useState(false);
   const [filters, setFilters] = useState({
     category: [],
     search: '',
@@ -65,9 +81,6 @@ export default function BrowsingPage({ cart, addToCart, changeQuantity, onChecko
     weightRange: 'all',
     availability: 'all',
   });
-
-  const storedName = getStoredName();
-  const profileInitial = storedName?.trim()?.charAt(0)?.toUpperCase() || 'C';
 
   useEffect(() => {
     async function loadProducts() {
@@ -196,32 +209,19 @@ const weightTotal = useMemo(() => (
 
         <ul className="customer-navbar-links">
           <li><a href="/home">Home</a></li>
-          <li><a href="#browse-products">Shop</a></li>
-          <li><a href="#browse-filters">Filters</a></li>
-          <li><a href="#browse-cart">Cart</a></li>
+          <li>
+            <button
+              type="button"
+              className="customer-navbar-link-button"
+              onClick={() => setIsCartExpanded(true)}
+            >
+              Cart
+            </button>
+          </li>
         </ul>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <button className="customer-profile-btn" type="button" title={storedName || 'Customer'}>
-            <div className="customer-profile-avatar customer-profile-avatar-fallback">{profileInitial}</div>
-          </button>
-          <button
-            type="button"
-            onClick={() => { clearFrontendSession(); window.location.href = '/'; }}
-            style={{
-              padding: '0.45rem 1rem',
-              border: '1.5px solid var(--border)',
-              borderRadius: '10px',
-              background: 'rgba(253, 57, 57, 0.92)',
-              fontFamily: 'Inter, sans-serif',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              color: 'white',
-              cursor: 'pointer',
-            }}
-          >
-            Log out
-          </button>
+          <CustomerAccountMenu />
         </div>
       </nav>
 
@@ -395,17 +395,17 @@ const weightTotal = useMemo(() => (
             <div className="customer-product-grid">
               {filteredProducts.map((product) => {
                 const cartItem = cart.find((item) => item.id === product.id);
-                const cartQty = cartItem?.qty ?? 0;
+                const cartQty = Number(cartItem?.quantity || 0);
+                const stockStatus = getCustomerStockStatus(product);
                 
                 return(
                   <div className="customer-product-card" key={product.id} onClick={() => { window.location.href = `/product/${product.id}`; }} style={{ cursor: 'pointer' }}>
                     <img src={getFallbackImage(product)} alt={product.name} />
                     <div className="customer-product-top">
                       <p className="customer-product-category">{product.category}</p>
-                      <span className={`customer-product-stock-quantity ${
-                          product.stock === 0 ? "out" : 
-                          product.stock < 10  ? "low" : "in"
-                      }`}>{product.stock > 0 ? `Stock: ${product.stock}` : "Out of Stock"}</span>
+                      <span className={`customer-product-stock-quantity ${stockStatus.tone}`}>
+                        {stockStatus.label}
+                      </span>
                     </div>
                     <h3>{product.name}</h3>
                     <p className="customer-product-weight">{Number(product.weight_lbs).toFixed(2)} lbs</p>
@@ -451,10 +451,125 @@ const weightTotal = useMemo(() => (
           )}
         </main>
 
+        {isCartExpanded ? (
+          <div
+            className="customer-cart-overlay"
+            onClick={() => setIsCartExpanded(false)}
+          >
+            <aside
+              className="customer-cart-panel customer-cart-panel-expanded"
+              id="browse-cart"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="customer-cart-header">
+                <h2>Cart</h2>
+                <div className="customer-cart-header-actions">
+                  <span className="customer-cart-badge">{cartItemCount}</span>
+                  <button
+                    type="button"
+                    className="customer-cart-expand-button"
+                    onClick={() => setIsCartExpanded(false)}
+                    title="Minimize cart"
+                  >
+                    <i className="fas fa-compress-alt" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+
+              {cart.length === 0 ? (
+                <div className="customer-cart-empty">
+                  <p>No items yet.</p>
+                  <span>Add products from the center panel.</span>
+                </div>
+              ) : (
+                <>
+                  <div className="customer-cart-list">
+                    {cart.map((item) => (
+                      <div className="customer-cart-row" key={item.id}>
+                        <div>
+                          <p className="customer-cart-product-name">{item.name}</p>
+                          <p className="customer-cart-product-price">
+                            ${item.price} each · ${(item.price * item.quantity).toFixed(2)}</p>
+                          <p className="customer-cart-product-weight">
+                            {item.weight_lbs} lbs each · {((item.weight_lbs || 0) * item.quantity).toFixed(2)} lbs
+                          </p>
+                        </div>
+
+                        <div className="customer-cart-controls">
+                          <button type="button" onClick={() => changeQuantity(item.id, -1)}>−</button>
+                          <span>{item.quantity}</span>
+                          <button
+                            type="button"
+                            onClick={() => changeQuantity(item.id, 1)}
+                            disabled={item.quantity >= (products.find((p) => p.id === item.id)?.stock ?? 0)}
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="customer-cart-summary">
+                    <div className="customer-cart-header">
+                      <h2>Summary</h2>
+                    </div>
+                    <div className={`customer-cart-weight 
+                      ${weightTotal > 20 ? "over-limit" : ""}
+                      ${weightTotal > 15 && weightTotal <= 20 ? "warning-high" : ""}
+                      ${weightTotal > 10 && weightTotal <= 15 ? "warning-mid" : ""}`}>
+                      <span>Weight</span>
+                      <strong>{weightTotal.toFixed(2)} / 20 lbs</strong>
+
+                    </div>
+
+                    <div className="customer-cart-total">
+                      <span>Order Subtotal</span>
+                      <strong>${cartTotal.toFixed(2)}</strong>
+                    </div>
+
+                    <div className={`customer-cart-deliveryfee ${weightTotal > 20 ? "over-limit" : ""}`}>
+                      <span className= "customer-cart-delivery-label">
+                        Delivery Fee
+                        <span className="info-icon">
+                          i
+                          <span className="tooltip">
+                            Delivery fee applies when total weight exceed 20 lbs.
+                          </span>
+                        </span>
+                      </span>
+                      <strong>
+                          {deliveryFee == 0 ? "Free" : `$${deliveryFee}`}
+                      </strong>
+                    </div>
+
+                    <div className="customer-cart-final-total">
+                      <span>Total</span>
+                      <strong>${finalTotal.toFixed(2)}</strong>
+                    </div>
+
+                    <button className="customer-checkout-btn" type="button" onClick={() => setShowCheckoutModal(true)}>Checkout</button>
+                  </div>
+                </>
+              )}
+            </aside>
+          </div>
+        ) : null}
+
         <aside className="customer-cart-panel" id="browse-cart">
           <div className="customer-cart-header">
             <h2>Cart</h2>
-            <span className="customer-cart-badge">{cartItemCount}</span>
+            <div className="customer-cart-header-actions">
+              <span className="customer-cart-badge">{cartItemCount}</span>
+              <button
+                type="button"
+                className="customer-cart-expand-button"
+                onClick={() => setIsCartExpanded(true)}
+                title="Expand cart"
+              >
+                <i className="fas fa-expand-alt" aria-hidden="true" />
+              </button>
+            </div>
           </div>
 
           {cart.length === 0 ? (

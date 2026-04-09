@@ -262,6 +262,10 @@ class CheckoutRequest(BaseModel):
     delivery_address: Optional[str] = None
 
 
+class DeleteAccountRequest(BaseModel):
+    email: EmailStr
+
+
 class AdminProductCreateRequest(BaseModel):
     name: str
     description: Optional[str] = None
@@ -509,6 +513,68 @@ def get_me(auth_token: Optional[str] = Cookie(default=None), db: Session = Depen
         "role": user.role,
         "address": user.address or "",
     }
+
+
+@app.delete("/api/account")
+def delete_account(
+    body: DeleteAccountRequest,
+    response: Response,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    if body.email.strip().lower() != str(current_user["email"]).strip().lower():
+        raise HTTPException(status_code=400, detail="Email confirmation does not match this account")
+
+    is_lead_admin = db.execute(
+        text("SELECT is_lead_admin FROM users WHERE id = :id"),
+        {"id": current_user["userId"]},
+    ).fetchone()
+
+    if is_lead_admin and bool(is_lead_admin.is_lead_admin):
+        raise HTTPException(status_code=403, detail="Lead admin account cannot be deleted")
+
+    try:
+        db.execute(
+            text("DELETE FROM invite_codes WHERE created_by = :uid"),
+            {"uid": current_user["userId"]},
+        )
+        db.execute(
+            text("UPDATE invite_codes SET used_by = NULL, used_at = NULL WHERE used_by = :uid"),
+            {"uid": current_user["userId"]},
+        )
+        db.execute(
+            text(
+                """
+                DELETE oi
+                FROM order_items oi
+                JOIN orders o ON o.id = oi.order_id
+                WHERE o.user_id = :uid
+                """
+            ),
+            {"uid": current_user["userId"]},
+        )
+        db.execute(
+            text("DELETE FROM orders WHERE user_id = :uid"),
+            {"uid": current_user["userId"]},
+        )
+        db.execute(
+            text("DELETE FROM cart WHERE user_id = :uid"),
+            {"uid": current_user["userId"]},
+        )
+        db.execute(
+            text("DELETE FROM users WHERE id = :uid"),
+            {"uid": current_user["userId"]},
+        )
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete account: {str(e)}")
+
+    response.delete_cookie("auth_token")
+    return {"message": "Account deleted"}
 
 
 # ── Customer product browsing ───────────────────────────────────────────────

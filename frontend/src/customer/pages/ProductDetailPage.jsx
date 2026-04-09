@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getStoredName, clearFrontendSession } from '../../utils/authSession';
+import CustomerAccountMenu from '../components/CustomerAccountMenu';
 import '../styles/browsing.css';
 import '../styles/productDetailPage.css';
 
@@ -34,6 +34,21 @@ function getFallbackImage(product) {
   return makePlaceholder('OFS Product');
 }
 
+function getCustomerStockStatus(product) {
+  const stock = Number(product?.stock || 0);
+  const threshold = Number(product?.low_stock_threshold || 10);
+
+  if (!product?.is_available || stock <= 0) {
+    return { tone: 'out-of-stock', label: 'Out of Stock' };
+  }
+
+  if (stock <= threshold) {
+    return { tone: 'low-stock', label: 'Low Stock' };
+  }
+
+  return { tone: 'in-stock', label: 'In Stock' };
+}
+
 export default function ProductDetailPage({ productId, cart, addToCart, changeQuantity }) {
   const [product, setProduct] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -41,12 +56,10 @@ export default function ProductDetailPage({ productId, cart, addToCart, changeQu
   const [quantity, setQuantity] = useState(1);
   const [addedToCart, setAddedToCart] = useState(false);
 
-  const storedName = getStoredName();
-  const profileInitial = storedName?.trim()?.charAt(0)?.toUpperCase() || 'C';
-
   const existingCartItem = cart.find((item) => item.id === product?.id);
   const quantityAlreadyInCart = Number(existingCartItem?.quantity || 0);
   const remainingStock = Math.max(0, Number(product?.stock || 0) - quantityAlreadyInCart);
+  const stockStatus = getCustomerStockStatus(product);
 
   useEffect(() => {
     async function loadProduct() {
@@ -87,14 +100,16 @@ export default function ProductDetailPage({ productId, cart, addToCart, changeQu
     setQuantity((previous) => Math.min(previous, remainingStock));
   }, [remainingStock]);
 
-  function handleAddToCart() {
+  async function handleAddToCart() {
     if (!product || !product.is_available || remainingStock <= 0) return;
 
     const quantityToAdd = Math.min(quantity, remainingStock);
     if (quantityToAdd <= 0) return;
 
+    const added = await addToCart(product, quantityToAdd);
+    if (!added) return;
+
     setAddedToCart(true);
-    addToCart(product, quantityToAdd);
 
     setTimeout(() => {
       window.location.href = "/home";
@@ -109,32 +124,11 @@ export default function ProductDetailPage({ productId, cart, addToCart, changeQu
           <span className="customer-logo-text">OFS</span>
         </a>
 
-        <ul className="customer-navbar-links">
-          <li><a href="/home">Home</a></li>
-          <li><a href="/home#browse-products">Shop</a></li>
-        </ul>
-
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <button className="customer-profile-btn" type="button" title={storedName || 'Customer'}>
-            <div className="customer-profile-avatar customer-profile-avatar-fallback">{profileInitial}</div>
-          </button>
-          <button
-            type="button"
-            onClick={() => { clearFrontendSession(); window.location.href = '/'; }}
-            style={{
-              padding: '0.45rem 1rem',
-              border: '1.5px solid var(--border)',
-              borderRadius: '10px',
-              background: 'rgba(253, 57, 57, 0.92)',
-              fontFamily: 'Inter, sans-serif',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              color: 'white',
-              cursor: 'pointer',
-            }}
-          >
-            Log out
-          </button>
+          <ul className="customer-navbar-links">
+            <li><a href="/home">Home</a></li>
+          </ul>
+          <CustomerAccountMenu />
         </div>
       </nav>
 
@@ -171,20 +165,16 @@ export default function ProductDetailPage({ productId, cart, addToCart, changeQu
                   <span className="pdp-meta-value">{Number(product.weight_lbs).toFixed(2)} lbs</span>
                 </div>
                 <div className="pdp-meta-item">
-                  <span className="pdp-meta-label">Stock</span>
-                  <span className="pdp-meta-value">{product.stock} units</span>
+                  <span className="pdp-meta-label">Availability</span>
+                  <span className="pdp-meta-value">{stockStatus.label}</span>
                 </div>
               </div>
 
               <div className="pdp-price">${Number(product.price).toFixed(2)}</div>
 
-              {(() => {
-                if (!product.is_available || product.stock <= 0)
-                  return <div className="pdp-stock-badge out-of-stock"><div className="pdp-stock-dot" /> Out of Stock</div>;
-                if (product.stock <= 10)
-                  return <div className="pdp-stock-badge low-stock"><div className="pdp-stock-dot" /> Low Stock – Only {product.stock} left</div>;
-                return <div className="pdp-stock-badge in-stock"><div className="pdp-stock-dot" /> In Stock</div>;
-              })()}
+              <div className={`pdp-stock-badge ${stockStatus.tone}`}>
+                <div className="pdp-stock-dot" /> {stockStatus.label}
+              </div>
 
               <div className="pdp-quantity-row">
                 <label>Quantity</label>
@@ -207,7 +197,7 @@ export default function ProductDetailPage({ productId, cart, addToCart, changeQu
                 </div>
                 <p className="pdp-stock-note">
                   {remainingStock > 0
-                    ? `${remainingStock} more available to add`
+                    ? 'Available to add'
                     : 'Maximum already in cart'}
                 </p>
               </div>

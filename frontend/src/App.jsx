@@ -32,14 +32,9 @@ function RedirectPage({ to }) {
  * Returns true once validation is complete.
  */
 function useSessionRevalidation() {
-  const [ready, setReady] = useState(() => {
-    // If we already have a stored email, no need to revalidate
-    return Boolean(getStoredEmail());
-  });
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (ready) return;
-
     let cancelled = false;
 
     async function revalidate() {
@@ -56,9 +51,13 @@ function useSessionRevalidation() {
             name: data.name,
             role: data.role,
           });
+        } else if (!cancelled) {
+          persistFrontendSession({ userId: '', email: '', name: '', role: '' });
         }
       } catch {
-        // Cookie expired or no cookie — user stays logged out
+        if (!cancelled) {
+          persistFrontendSession({ userId: '', email: '', name: '', role: '' });
+        }
       } finally {
         if (!cancelled) setReady(true);
       }
@@ -67,7 +66,7 @@ function useSessionRevalidation() {
     revalidate();
 
     return () => { cancelled = true; };
-  }, [ready]);
+  }, []);
 
   return ready;
 }
