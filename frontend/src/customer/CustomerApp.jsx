@@ -3,6 +3,7 @@ import './styles/customer.css';
 import BrowsingPage from './pages/BrowsingPage';
 import ProductDetailPage from './pages/ProductDetailPage';
 import OrderConfirmationPage from './pages/OrderConfirmationPage';
+import OrderHistoryPage from './pages/OrderHistoryPage';
 import { clearFrontendSession } from '../utils/authSession';
 
 const API_BASE = 'http://localhost:8000';
@@ -128,6 +129,15 @@ export default function CustomerApp() {
 
     setConfirmedOrder({ ...data, items: cart });
     setCart([]);
+  }
+
+  // Order history page
+  if (window.location.pathname === '/orders') {
+    return (
+      <div className="customer-app">
+        <OrderHistoryPage onBack={() => { window.location.href = '/home'; }} />
+      </div>
+    );
   }
 
   // Product detail page
