@@ -209,6 +209,7 @@ const weightTotal = useMemo(() => (
 
         <ul className="customer-navbar-links">
           <li><a href="/home">Home</a></li>
+          <li><a href="/orders">My Orders</a></li>
           <li>
             <button
               type="button"

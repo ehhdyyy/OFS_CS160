@@ -11,6 +11,7 @@ import jwt
 import datetime
 import os
 import secrets
+from route_service import get_delivery_route, get_progress_location, estimate_eta
 
 load_dotenv()
 
@@ -1371,6 +1372,7 @@ def get_admin_products(
 def get_admin_orders(
     search: Optional[str] = Query(default=None),
     status: Optional[str] = Query(default=None),
+    days: Optional[int] = Query(default=None),
     current_user: dict = Depends(require_role("manager", "employee")),
     db: Session = Depends(get_db),
 ):
@@ -1402,6 +1404,10 @@ def get_admin_orders(
             conditions.append("d.status = 'delivered'")
         elif normalized_status == "failed":
             conditions.append("d.status = 'failed'")
+
+        if days:
+            conditions.append("o.created_at >= DATE_SUB(NOW(), INTERVAL :days DAY)")
+            params["days"] = days
 
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
@@ -2210,6 +2216,275 @@ def revoke_invite_code(
     db.execute(text("DELETE FROM invite_codes WHERE id = :id"), {"id": code_id})
     db.commit()
     return {"message": "Invite code revoked"}
+
+
+# ── Order status / location tracking ────────────────────────────────────────
+class AdminOrderStatusUpdate(BaseModel):
+    status: str
+
+
+@app.get("/api/orders/{order_id}/status")
+def get_order_status(
+    order_id: int,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    try:
+        row = db.execute(
+            text(
+                """
+                SELECT
+                    o.id,
+                    o.user_id,
+                    o.delivery_address,
+                    o.delivery_fee,
+                    o.total_price,
+                    o.total_weight,
+                    o.payment_status,
+                    o.created_at,
+                    d.id AS delivery_id,
+                    d.status AS delivery_status,
+                    d.robot_id,
+                    d.started_at,
+                    d.completed_at
+                FROM orders o
+                LEFT JOIN deliveries d ON d.id = o.delivery_id
+                WHERE o.id = :order_id
+                """
+            ),
+            {"order_id": order_id},
+        ).mappings().fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Order not found")
+
+        is_admin = current_user["role"] in ("manager", "employee")
+        if not is_admin and int(row["user_id"]) != current_user["userId"]:
+            raise HTTPException(status_code=403, detail="You can only view your own orders")
+
+        legacy_status = delivery_status_to_legacy_order_status(row["delivery_status"])
+        status_label = legacy_status_label(legacy_status)
+
+        eta_minutes = None
+        if row["delivery_status"] == "in_transit" and row["started_at"]:
+            elapsed = (datetime.datetime.now() - row["started_at"]).total_seconds() / 60
+            eta_minutes = max(int(30 - elapsed), 1)
+
+        return {
+            "order_id": int(row["id"]),
+            "status": legacy_status,
+            "status_label": status_label,
+            "delivery_status": row["delivery_status"],
+            "delivery_id": int(row["delivery_id"]) if row["delivery_id"] else None,
+            "robot_label": robot_label(row["robot_id"]),
+            "delivery_address": row["delivery_address"],
+            "delivery_fee": float(money_decimal(row["delivery_fee"])),
+            "total_price": float(money_decimal(row["total_price"])),
+            "total_weight_lbs": float(Decimal(str(row["total_weight"] or 0)).quantize(Decimal("0.01"))),
+            "payment_status": row["payment_status"],
+            "eta_minutes": eta_minutes,
+            "started_at": str(row["started_at"]) if row["started_at"] else None,
+            "completed_at": str(row["completed_at"]) if row["completed_at"] else None,
+            "created_at": str(row["created_at"]),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load order status: {str(e)}")
+
+
+@app.get("/api/orders/{order_id}/location")
+def get_order_location(
+    order_id: int,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    try:
+        row = db.execute(
+            text(
+                """
+                SELECT
+                    o.id,
+                    o.user_id,
+                    o.delivery_address,
+                    d.id AS delivery_id,
+                    d.status AS delivery_status,
+                    d.robot_id,
+                    d.started_at,
+                    d.completed_at
+                FROM orders o
+                LEFT JOIN deliveries d ON d.id = o.delivery_id
+                WHERE o.id = :order_id
+                """
+            ),
+            {"order_id": order_id},
+        ).mappings().fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Order not found")
+
+        is_admin = current_user["role"] in ("manager", "employee")
+        if not is_admin and int(row["user_id"]) != current_user["userId"]:
+            raise HTTPException(status_code=403, detail="You can only view your own orders")
+
+        # Use route service for proper route + ETA calculation
+        route_data = get_delivery_route(
+            destination_address=row["delivery_address"],
+            order_id=int(row["id"]),
+        )
+
+        if row["delivery_status"] == "delivered":
+            progress_data = {
+                "current_location": route_data["destination"],
+                "progress": 1.0,
+                "eta_minutes": 0,
+            }
+        elif row["delivery_status"] == "in_transit" and row["started_at"]:
+            progress_data = get_progress_location(
+                order_id=int(row["id"]),
+                started_at=row["started_at"],
+            )
+        else:
+            progress_data = {
+                "current_location": route_data["origin"],
+                "progress": 0.0,
+                "eta_minutes": route_data["eta_minutes"],
+            }
+
+        return {
+            "order_id": int(row["id"]),
+            "delivery_status": row["delivery_status"],
+            "robot_label": robot_label(row["robot_id"]),
+            "progress": progress_data["progress"],
+            "eta_minutes": progress_data["eta_minutes"],
+            "current_location": progress_data["current_location"],
+            "store_location": route_data["origin"],
+            "destination_location": route_data["destination"],
+            "route": route_data["route"],
+            "distance_miles": route_data["distance_miles"],
+            "delivery_address": row["delivery_address"],
+            "route_source": route_data["source"],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load order location: {str(e)}")
+
+
+VALID_STATUS_TRANSITIONS = {
+    "processing": ["out_for_delivery", "failed"],
+    "out_for_delivery": ["delivered", "failed"],
+    "delivered": [],
+    "failed": [],
+}
+
+
+@app.patch("/api/admin/orders/{order_id}/status")
+def update_order_status(
+    order_id: int,
+    body: AdminOrderStatusUpdate,
+    current_user: dict = Depends(require_role("manager", "employee")),
+    db: Session = Depends(get_db),
+):
+    try:
+        order_row = db.execute(
+            text(
+                """
+                SELECT
+                    o.id,
+                    o.delivery_id,
+                    o.total_weight,
+                    d.status AS delivery_status,
+                    d.robot_id
+                FROM orders o
+                LEFT JOIN deliveries d ON d.id = o.delivery_id
+                WHERE o.id = :order_id
+                """
+            ),
+            {"order_id": order_id},
+        ).mappings().fetchone()
+
+        if not order_row:
+            raise HTTPException(status_code=404, detail="Order not found")
+
+        current_status = delivery_status_to_legacy_order_status(order_row["delivery_status"])
+        new_status = body.status.strip().lower()
+
+        status_aliases = {
+            "preparing": "processing",
+            "in transit": "out_for_delivery",
+            "in_transit": "out_for_delivery",
+            "out for delivery": "out_for_delivery",
+        }
+        new_status = status_aliases.get(new_status, new_status)
+
+        allowed = VALID_STATUS_TRANSITIONS.get(current_status, [])
+        if new_status not in allowed:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot transition from '{current_status}' to '{new_status}'. Allowed: {allowed}",
+            )
+
+        if new_status == "out_for_delivery":
+            robot = db.execute(
+                text("SELECT id FROM robots WHERE status = 'charging' ORDER BY id ASC LIMIT 1")
+            ).fetchone()
+
+            if not robot:
+                raise HTTPException(status_code=400, detail="No available robots to assign")
+
+            delivery_result = db.execute(
+                text(
+                    """
+                    INSERT INTO deliveries (robot_id, status, started_at)
+                    VALUES (:robot_id, 'in_transit', NOW())
+                    """
+                ),
+                {"robot_id": robot.id},
+            )
+            delivery_id = int(delivery_result.lastrowid)
+
+            db.execute(
+                text("UPDATE orders SET delivery_id = :did WHERE id = :oid"),
+                {"did": delivery_id, "oid": order_id},
+            )
+            db.execute(
+                text("UPDATE robots SET status = 'on_delivery' WHERE id = :rid"),
+                {"rid": robot.id},
+            )
+
+        elif new_status == "delivered":
+            if order_row["delivery_id"]:
+                db.execute(
+                    text("UPDATE deliveries SET status = 'delivered', completed_at = NOW() WHERE id = :did"),
+                    {"did": order_row["delivery_id"]},
+                )
+                if order_row["robot_id"]:
+                    db.execute(
+                        text("UPDATE robots SET status = 'charging' WHERE id = :rid"),
+                        {"rid": order_row["robot_id"]},
+                    )
+
+        elif new_status == "failed":
+            if order_row["delivery_id"]:
+                db.execute(
+                    text("UPDATE deliveries SET status = 'failed', completed_at = NOW() WHERE id = :did"),
+                    {"did": order_row["delivery_id"]},
+                )
+                if order_row["robot_id"]:
+                    db.execute(
+                        text("UPDATE robots SET status = 'charging' WHERE id = :rid"),
+                        {"rid": order_row["robot_id"]},
+                    )
+
+        db.commit()
+        return get_order_status(order_id, current_user, db)
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to update order status: {str(e)}")
 
 
 # ── Health check ────────────────────────────────────────────────────────────
