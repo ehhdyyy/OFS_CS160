@@ -180,6 +180,17 @@ def robot_label(robot_id: Optional[int]) -> str:
     return f"Robot-{int(robot_id):02d}"
 
 
+def payment_method_payload(row) -> dict:
+    return {
+        "id": int(row["id"]),
+        "cardholderName": row["cardholder_name"] or "",
+        "cardLast4": row["card_last4"] or "",
+        "cardExpiry": row["card_expiry"] or "",
+        "cardType": row["card_type"] or "",
+        "isDefault": bool(row["is_default"]),
+    }
+
+
 def derived_product_available(stock: int) -> bool:
     return stock > 0
 
@@ -315,7 +326,6 @@ class DeleteAccountRequest(BaseModel):
 
 class UpdatePersonalInfoRequest(BaseModel):
     name: str
-    email: EmailStr
 
 
 class UpdatePasswordRequest(BaseModel):
@@ -337,6 +347,14 @@ class UpdatePaymentInfoRequest(BaseModel):
     card_last4: Optional[str] = None
     card_expiry: Optional[str] = None
     card_type: Optional[str] = None
+
+
+class SavedPaymentMethodRequest(BaseModel):
+    cardholder_name: str
+    card_last4: str
+    card_expiry: Optional[str] = None
+    card_type: Optional[str] = None
+    is_default: bool = False
 
 
 class AdminProductCreateRequest(BaseModel):
@@ -734,9 +752,7 @@ def get_profile(current_user: dict = Depends(require_auth), db: Session = Depend
                 billing_address_line1, billing_address_line2,
                 billing_city, billing_state, billing_zip, billing_country,
                 shipping_address_line1, shipping_address_line2,
-                shipping_city, shipping_state, shipping_zip, shipping_country,
-                payment_cardholder_name, payment_card_last4,
-                payment_card_expiry, payment_card_type
+                shipping_city, shipping_state, shipping_zip, shipping_country
             FROM users WHERE id = :id
             """
         ),
@@ -745,6 +761,18 @@ def get_profile(current_user: dict = Depends(require_auth), db: Session = Depend
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    payment_methods = db.execute(
+        text(
+            """
+            SELECT id, cardholder_name, card_last4, card_expiry, card_type, is_default
+            FROM payment_methods
+            WHERE user_id = :id
+            ORDER BY is_default DESC, created_at ASC, id ASC
+            """
+        ),
+        {"id": current_user["userId"]},
+    ).mappings().all()
 
     return {
         "name": user.name,
@@ -765,12 +793,7 @@ def get_profile(current_user: dict = Depends(require_auth), db: Session = Depend
             "zipCode": user.shipping_zip or "",
             "country": user.shipping_country or "",
         },
-        "paymentInfo": {
-            "cardholderName": user.payment_cardholder_name or "",
-            "cardLast4": user.payment_card_last4 or "",
-            "cardExpiry": user.payment_card_expiry or "",
-            "cardType": user.payment_card_type or "",
-        },
+        "paymentMethods": [payment_method_payload(row) for row in payment_methods],
     }
 
 
@@ -781,26 +804,16 @@ def update_personal_info(
     db: Session = Depends(get_db),
 ):
     name = body.name.strip()
-    email = str(body.email).strip().lower()
 
     if not name:
         raise HTTPException(status_code=400, detail="Name cannot be empty")
 
-    # Check email uniqueness if the user is changing it
-    if email != str(current_user["email"]).strip().lower():
-        existing = db.execute(
-            text("SELECT id FROM users WHERE LOWER(email) = :email AND id != :id"),
-            {"email": email, "id": current_user["userId"]},
-        ).fetchone()
-        if existing:
-            raise HTTPException(status_code=409, detail="That email is already in use")
-
     db.execute(
-        text("UPDATE users SET name = :name, email = :email WHERE id = :id"),
-        {"name": name, "email": email, "id": current_user["userId"]},
+        text("UPDATE users SET name = :name WHERE id = :id"),
+        {"name": name, "id": current_user["userId"]},
     )
     db.commit()
-    return {"message": "Personal info updated", "name": name, "email": email}
+    return {"message": "Personal info updated", "name": name, "email": current_user["email"]}
 
 
 @app.put("/api/profile/password")
@@ -894,38 +907,204 @@ def update_shipping_address(
     return {"message": "Shipping address updated"}
 
 
-@app.put("/api/profile/payment-info")
-def update_payment_info(
-    body: UpdatePaymentInfoRequest,
+@app.post("/api/profile/payment-methods")
+def create_payment_method(
+    body: SavedPaymentMethodRequest,
     current_user: dict = Depends(require_auth),
     db: Session = Depends(get_db),
 ):
-    # Validate card_last4 if provided — only store the last 4 digits
     last4 = (body.card_last4 or "").strip()
-    if last4 and (not last4.isdigit() or len(last4) != 4):
+    if not body.cardholder_name.strip():
+        raise HTTPException(status_code=400, detail="Cardholder name is required")
+    if not last4 or not last4.isdigit() or len(last4) != 4:
         raise HTTPException(status_code=400, detail="card_last4 must be exactly 4 digits")
+
+    saved_count = db.execute(
+        text("SELECT COUNT(*) FROM payment_methods WHERE user_id = :id"),
+        {"id": current_user["userId"]},
+    ).scalar() or 0
+    if int(saved_count) >= 3:
+        raise HTTPException(status_code=400, detail="You can save up to 3 payment methods")
+
+    if body.is_default:
+        db.execute(
+            text("UPDATE payment_methods SET is_default = FALSE WHERE user_id = :id"),
+            {"id": current_user["userId"]},
+        )
+    elif saved_count == 0:
+        body = SavedPaymentMethodRequest(
+            cardholder_name=body.cardholder_name,
+            card_last4=body.card_last4,
+            card_expiry=body.card_expiry,
+            card_type=body.card_type,
+            is_default=True,
+        )
+
+    result = db.execute(
+        text(
+            """
+            INSERT INTO payment_methods (
+                user_id, cardholder_name, card_last4, card_expiry, card_type, is_default
+            ) VALUES (
+                :user_id, :cardholder_name, :card_last4, :card_expiry, :card_type, :is_default
+            )
+            """
+        ),
+        {
+            "user_id": current_user["userId"],
+            "cardholder_name": body.cardholder_name.strip(),
+            "card_last4": last4,
+            "card_expiry": (body.card_expiry or "").strip() or None,
+            "card_type": (body.card_type or "").strip() or None,
+            "is_default": bool(body.is_default),
+        },
+    )
+    db.commit()
+    row = db.execute(
+        text(
+            """
+            SELECT id, cardholder_name, card_last4, card_expiry, card_type, is_default
+            FROM payment_methods
+            WHERE id = :id
+            """
+        ),
+        {"id": result.lastrowid},
+    ).mappings().fetchone()
+    return {"message": "Payment method saved", "paymentMethod": payment_method_payload(row)}
+
+
+@app.put("/api/profile/payment-methods/{payment_method_id}")
+def update_payment_method(
+    payment_method_id: int,
+    body: SavedPaymentMethodRequest,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    last4 = (body.card_last4 or "").strip()
+    if not body.cardholder_name.strip():
+        raise HTTPException(status_code=400, detail="Cardholder name is required")
+    if not last4 or not last4.isdigit() or len(last4) != 4:
+        raise HTTPException(status_code=400, detail="card_last4 must be exactly 4 digits")
+
+    exists = db.execute(
+        text("SELECT id FROM payment_methods WHERE id = :id AND user_id = :user_id"),
+        {"id": payment_method_id, "user_id": current_user["userId"]},
+    ).fetchone()
+    if not exists:
+        raise HTTPException(status_code=404, detail="Payment method not found")
+
+    if body.is_default:
+        db.execute(
+            text("UPDATE payment_methods SET is_default = FALSE WHERE user_id = :id"),
+            {"id": current_user["userId"]},
+        )
 
     db.execute(
         text(
             """
-            UPDATE users SET
-                payment_cardholder_name = :cardholder_name,
-                payment_card_last4      = :card_last4,
-                payment_card_expiry     = :card_expiry,
-                payment_card_type       = :card_type
-            WHERE id = :id
+            UPDATE payment_methods SET
+                cardholder_name = :cardholder_name,
+                card_last4 = :card_last4,
+                card_expiry = :card_expiry,
+                card_type = :card_type,
+                is_default = :is_default
+            WHERE id = :id AND user_id = :user_id
             """
         ),
         {
-            "cardholder_name": (body.cardholder_name or "").strip() or None,
-            "card_last4": last4 or None,
+            "cardholder_name": body.cardholder_name.strip(),
+            "card_last4": last4,
             "card_expiry": (body.card_expiry or "").strip() or None,
             "card_type": (body.card_type or "").strip() or None,
-            "id": current_user["userId"],
+            "is_default": bool(body.is_default),
+            "id": payment_method_id,
+            "user_id": current_user["userId"],
         },
     )
     db.commit()
-    return {"message": "Payment info updated"}
+    row = db.execute(
+        text(
+            """
+            SELECT id, cardholder_name, card_last4, card_expiry, card_type, is_default
+            FROM payment_methods
+            WHERE id = :id
+            """
+        ),
+        {"id": payment_method_id},
+    ).mappings().fetchone()
+    return {"message": "Payment method updated", "paymentMethod": payment_method_payload(row)}
+
+
+@app.patch("/api/profile/payment-methods/{payment_method_id}/default")
+def set_default_payment_method(
+    payment_method_id: int,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    exists = db.execute(
+        text("SELECT id FROM payment_methods WHERE id = :id AND user_id = :user_id"),
+        {"id": payment_method_id, "user_id": current_user["userId"]},
+    ).fetchone()
+    if not exists:
+        raise HTTPException(status_code=404, detail="Payment method not found")
+
+    db.execute(
+        text("UPDATE payment_methods SET is_default = FALSE WHERE user_id = :user_id"),
+        {"user_id": current_user["userId"]},
+    )
+    db.execute(
+        text("UPDATE payment_methods SET is_default = TRUE WHERE id = :id AND user_id = :user_id"),
+        {"id": payment_method_id, "user_id": current_user["userId"]},
+    )
+    db.commit()
+    return {"message": "Default payment method updated"}
+
+
+@app.delete("/api/profile/payment-methods/{payment_method_id}")
+def delete_payment_method(
+    payment_method_id: int,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    row = db.execute(
+        text(
+            """
+            SELECT id, is_default
+            FROM payment_methods
+            WHERE id = :id AND user_id = :user_id
+            """
+        ),
+        {"id": payment_method_id, "user_id": current_user["userId"]},
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Payment method not found")
+
+    db.execute(
+        text("DELETE FROM payment_methods WHERE id = :id AND user_id = :user_id"),
+        {"id": payment_method_id, "user_id": current_user["userId"]},
+    )
+
+    if bool(row.is_default):
+        fallback = db.execute(
+            text(
+                """
+                SELECT id
+                FROM payment_methods
+                WHERE user_id = :user_id
+                ORDER BY created_at ASC, id ASC
+                LIMIT 1
+                """
+            ),
+            {"user_id": current_user["userId"]},
+        ).fetchone()
+        if fallback:
+            db.execute(
+                text("UPDATE payment_methods SET is_default = TRUE WHERE id = :id"),
+                {"id": fallback.id},
+            )
+
+    db.commit()
+    return {"message": "Payment method deleted"}
 
 
 # ── Customer product browsing ───────────────────────────────────────────────
