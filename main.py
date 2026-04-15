@@ -313,6 +313,32 @@ class DeleteAccountRequest(BaseModel):
     email: EmailStr
 
 
+class UpdatePersonalInfoRequest(BaseModel):
+    name: str
+    email: EmailStr
+
+
+class UpdatePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class AddressRequest(BaseModel):
+    line1: Optional[str] = None
+    line2: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    country: Optional[str] = None
+
+
+class UpdatePaymentInfoRequest(BaseModel):
+    cardholder_name: Optional[str] = None
+    card_last4: Optional[str] = None
+    card_expiry: Optional[str] = None
+    card_type: Optional[str] = None
+
+
 class AdminProductCreateRequest(BaseModel):
     name: str
     description: Optional[str] = None
@@ -694,6 +720,212 @@ def delete_account(
 
     response.delete_cookie("auth_token")
     return {"message": "Account deleted"}
+
+
+# ── Profile ─────────────────────────────────────────────────────────────────
+
+@app.get("/api/profile")
+def get_profile(current_user: dict = Depends(require_auth), db: Session = Depends(get_db)):
+    user = db.execute(
+        text(
+            """
+            SELECT
+                name, email,
+                billing_address_line1, billing_address_line2,
+                billing_city, billing_state, billing_zip, billing_country,
+                shipping_address_line1, shipping_address_line2,
+                shipping_city, shipping_state, shipping_zip, shipping_country,
+                payment_cardholder_name, payment_card_last4,
+                payment_card_expiry, payment_card_type
+            FROM users WHERE id = :id
+            """
+        ),
+        {"id": current_user["userId"]},
+    ).fetchone()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {
+        "name": user.name,
+        "email": user.email,
+        "billingAddress": {
+            "line1": user.billing_address_line1 or "",
+            "line2": user.billing_address_line2 or "",
+            "city": user.billing_city or "",
+            "state": user.billing_state or "",
+            "zipCode": user.billing_zip or "",
+            "country": user.billing_country or "",
+        },
+        "shippingAddress": {
+            "line1": user.shipping_address_line1 or "",
+            "line2": user.shipping_address_line2 or "",
+            "city": user.shipping_city or "",
+            "state": user.shipping_state or "",
+            "zipCode": user.shipping_zip or "",
+            "country": user.shipping_country or "",
+        },
+        "paymentInfo": {
+            "cardholderName": user.payment_cardholder_name or "",
+            "cardLast4": user.payment_card_last4 or "",
+            "cardExpiry": user.payment_card_expiry or "",
+            "cardType": user.payment_card_type or "",
+        },
+    }
+
+
+@app.put("/api/profile/personal-info")
+def update_personal_info(
+    body: UpdatePersonalInfoRequest,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    name = body.name.strip()
+    email = str(body.email).strip().lower()
+
+    if not name:
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+
+    # Check email uniqueness if the user is changing it
+    if email != str(current_user["email"]).strip().lower():
+        existing = db.execute(
+            text("SELECT id FROM users WHERE LOWER(email) = :email AND id != :id"),
+            {"email": email, "id": current_user["userId"]},
+        ).fetchone()
+        if existing:
+            raise HTTPException(status_code=409, detail="That email is already in use")
+
+    db.execute(
+        text("UPDATE users SET name = :name, email = :email WHERE id = :id"),
+        {"name": name, "email": email, "id": current_user["userId"]},
+    )
+    db.commit()
+    return {"message": "Personal info updated", "name": name, "email": email}
+
+
+@app.put("/api/profile/password")
+def update_password(
+    body: UpdatePasswordRequest,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    row = db.execute(
+        text("SELECT password_hash FROM users WHERE id = :id"),
+        {"id": current_user["userId"]},
+    ).fetchone()
+
+    if not row or not verify_password(body.current_password, row.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+
+    db.execute(
+        text("UPDATE users SET password_hash = :hash WHERE id = :id"),
+        {"hash": hash_password(body.new_password), "id": current_user["userId"]},
+    )
+    db.commit()
+    return {"message": "Password updated"}
+
+
+@app.put("/api/profile/billing-address")
+def update_billing_address(
+    body: AddressRequest,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    db.execute(
+        text(
+            """
+            UPDATE users SET
+                billing_address_line1 = :line1,
+                billing_address_line2 = :line2,
+                billing_city  = :city,
+                billing_state = :state,
+                billing_zip   = :zip_code,
+                billing_country = :country
+            WHERE id = :id
+            """
+        ),
+        {
+            "line1": body.line1 or None,
+            "line2": body.line2 or None,
+            "city": body.city or None,
+            "state": body.state or None,
+            "zip_code": body.zip_code or None,
+            "country": body.country or None,
+            "id": current_user["userId"],
+        },
+    )
+    db.commit()
+    return {"message": "Billing address updated"}
+
+
+@app.put("/api/profile/shipping-address")
+def update_shipping_address(
+    body: AddressRequest,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    db.execute(
+        text(
+            """
+            UPDATE users SET
+                shipping_address_line1 = :line1,
+                shipping_address_line2 = :line2,
+                shipping_city  = :city,
+                shipping_state = :state,
+                shipping_zip   = :zip_code,
+                shipping_country = :country
+            WHERE id = :id
+            """
+        ),
+        {
+            "line1": body.line1 or None,
+            "line2": body.line2 or None,
+            "city": body.city or None,
+            "state": body.state or None,
+            "zip_code": body.zip_code or None,
+            "country": body.country or None,
+            "id": current_user["userId"],
+        },
+    )
+    db.commit()
+    return {"message": "Shipping address updated"}
+
+
+@app.put("/api/profile/payment-info")
+def update_payment_info(
+    body: UpdatePaymentInfoRequest,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    # Validate card_last4 if provided — only store the last 4 digits
+    last4 = (body.card_last4 or "").strip()
+    if last4 and (not last4.isdigit() or len(last4) != 4):
+        raise HTTPException(status_code=400, detail="card_last4 must be exactly 4 digits")
+
+    db.execute(
+        text(
+            """
+            UPDATE users SET
+                payment_cardholder_name = :cardholder_name,
+                payment_card_last4      = :card_last4,
+                payment_card_expiry     = :card_expiry,
+                payment_card_type       = :card_type
+            WHERE id = :id
+            """
+        ),
+        {
+            "cardholder_name": (body.cardholder_name or "").strip() or None,
+            "card_last4": last4 or None,
+            "card_expiry": (body.card_expiry or "").strip() or None,
+            "card_type": (body.card_type or "").strip() or None,
+            "id": current_user["userId"],
+        },
+    )
+    db.commit()
+    return {"message": "Payment info updated"}
 
 
 # ── Customer product browsing ───────────────────────────────────────────────

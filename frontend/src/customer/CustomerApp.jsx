@@ -4,6 +4,7 @@ import BrowsingPage from './pages/BrowsingPage';
 import ProductDetailPage from './pages/ProductDetailPage';
 import OrderConfirmationPage from './pages/OrderConfirmationPage';
 import OrderHistoryPage from './pages/OrderHistoryPage';
+import ProfilePage from './pages/ProfilePage';
 import { clearFrontendSession } from '../utils/authSession';
 
 const API_BASE = 'http://localhost:8000';
@@ -129,6 +130,15 @@ export default function CustomerApp() {
 
     setConfirmedOrder({ ...data, items: cart });
     setCart([]);
+  }
+
+  // Profile page
+  if (window.location.pathname === '/profile') {
+    return (
+      <div className="customer-app">
+        <ProfilePage />
+      </div>
+    );
   }
 
   // Order history page

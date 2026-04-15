@@ -20,6 +20,37 @@ CREATE TABLE users (
     role          ENUM('customer', 'employee', 'manager') NOT NULL DEFAULT 'customer',
     is_lead_admin BOOLEAN NOT NULL DEFAULT FALSE,
     address       VARCHAR(255),
+
+    -- Billing address
+    billing_address_line1 VARCHAR(255)  NULL,
+    billing_address_line2 VARCHAR(255)  NULL,
+    billing_city          VARCHAR(100)  NULL,
+    billing_state         VARCHAR(100)  NULL,
+    billing_zip           VARCHAR(20)   NULL,
+    billing_country       VARCHAR(100)  NULL,
+
+    -- Shipping address
+    shipping_address_line1 VARCHAR(255) NULL,
+    shipping_address_line2 VARCHAR(255) NULL,
+    shipping_city          VARCHAR(100) NULL,
+    shipping_state         VARCHAR(100) NULL,
+    shipping_zip           VARCHAR(20)  NULL,
+    shipping_country       VARCHAR(100) NULL,
+
+    -- Payment info (no real processing — stored for UX only)
+    payment_cardholder_name VARCHAR(255) NULL,
+    payment_card_last4      CHAR(4)      NULL,
+    payment_card_expiry     VARCHAR(7)   NULL,
+    payment_card_type       VARCHAR(30)  NULL,
+
+    -- RESERVED FOR FUTURE USE: location-based product filtering.
+    -- Do NOT read or write these columns from the UI yet.
+    -- Intended to allow surfacing locally-relevant products to the customer
+    -- once the product-catalog feature is built out.
+    location_city    VARCHAR(100) NULL,
+    location_state   VARCHAR(100) NULL,
+    location_country VARCHAR(100) NULL,
+
     created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

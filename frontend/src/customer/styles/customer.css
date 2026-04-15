@@ -297,6 +297,220 @@
   cursor: not-allowed;
 }
 
+/* ── Profile page ─────────────────────────────────────────────────────────── */
+
+.customer-app .profile-page {
+  min-height: 100vh;
+}
+
+.customer-app .profile-content {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 4rem;
+}
+
+.customer-app .profile-header {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  margin-bottom: 2rem;
+}
+
+.customer-app .profile-header-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--green), var(--green-dark));
+  color: white;
+  font-size: 1.6rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 6px 18px rgba(34, 197, 94, 0.28);
+}
+
+.customer-app .profile-header-name {
+  margin: 0 0 0.2rem;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--text-dark);
+  letter-spacing: -0.02em;
+}
+
+.customer-app .profile-header-email {
+  margin: 0;
+  color: var(--text-mid);
+  font-size: 0.95rem;
+}
+
+.customer-app .profile-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.customer-app .profile-section-card {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow-sm);
+  padding: 1.5rem;
+}
+
+.customer-app .profile-section-title {
+  margin: 0 0 1.25rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-dark);
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.customer-app .profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.customer-app .profile-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.customer-app .profile-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+}
+
+.customer-app .profile-form-grid-2 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.customer-app .profile-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-light);
+}
+
+.customer-app .profile-input {
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 0.95rem;
+  color: var(--text-dark);
+  background: white;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  appearance: none;
+}
+
+.customer-app .profile-input:focus {
+  outline: none;
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.15);
+}
+
+.customer-app .profile-read-only {
+  margin: 0;
+  padding: 0.7rem 0;
+  font-size: 0.95rem;
+  color: var(--text-mid);
+}
+
+.customer-app .profile-save-btn {
+  align-self: flex-start;
+  padding: 0.65rem 1.4rem;
+  background: var(--green);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.customer-app .profile-save-btn:hover:not(:disabled) {
+  background: var(--green-dark);
+  transform: translateY(-1px);
+}
+
+.customer-app .profile-save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.customer-app .profile-delete-btn {
+  align-self: flex-start;
+  padding: 0.65rem 1.4rem;
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.customer-app .profile-delete-btn:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.customer-app .profile-delete-btn:disabled {
+  background: #fca5a5;
+  cursor: not-allowed;
+}
+
+.customer-app .profile-status-msg {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0.55rem 0.8rem;
+  border-radius: 8px;
+}
+
+.customer-app .profile-status-ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.customer-app .profile-status-err {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.customer-app .profile-helper-text {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  color: var(--text-mid);
+  line-height: 1.5;
+}
+
+.customer-app .profile-danger-text {
+  color: #b91c1c;
+}
+
+.customer-app .profile-loading {
+  text-align: center;
+  color: var(--text-mid);
+  padding: 3rem 0;
+}
+
+@media (max-width: 600px) {
+  .customer-app .profile-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── End profile page ─────────────────────────────────────────────────────── */
+
 @media (max-width: 960px) {
   .customer-app .customer-navbar {
     padding: 0 1rem;

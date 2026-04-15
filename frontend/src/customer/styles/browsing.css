@@ -669,6 +669,16 @@
   border-color: var(--green);
 }
 
+.checkout-input-invalid {
+  border-color: #dc2626 !important;
+}
+
+.checkout-field-error {
+  font-size: 0.78rem;
+  color: #dc2626;
+  margin-top: 0.2rem;
+}
+
 .checkout-field input:disabled {
   background: #f8fafc;
   color: #94a3b8;
@@ -735,4 +745,29 @@
 .checkout-pay-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.checkout-saved-address-card {
+  background: #f0fdf4;
+  border: 1.5px solid #bbf7d0;
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  margin-bottom: 1rem;
+}
+
+.checkout-saved-address-label {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #16a34a;
+}
+
+.checkout-saved-address-value {
+  margin: 0;
+  font-size: 0.97rem;
+  font-weight: 500;
+  color: #111827;
+  line-height: 1.5;
 }
