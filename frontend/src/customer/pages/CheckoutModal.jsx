@@ -164,7 +164,7 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
 
               <div className="checkout-field-row">
                 <div className="checkout-field">
-                  <label>Expiry</label>
+                  <label>Expiry Date</label>
                   <input
                     type="text"
                     placeholder="MM/YY"
@@ -180,8 +180,8 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
                     type="text"
                     placeholder="123"
                     value={cvv}
-                    onChange={(e) => setCvv(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                    maxLength={4}
+                    onChange={(e) => setCvv(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                    maxLength={3}
                     disabled={isProcessing}
                   />
                 </div>
