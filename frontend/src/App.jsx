@@ -110,7 +110,11 @@ export default function App() {
     return <RedirectPage to="/home" />;
   }
 
-  if (path === '/home' || path.startsWith('/product/') || path === '/orders') {
+  if (  path === '/home' ||
+    path.startsWith('/product/') ||
+    path === '/orders' ||
+    path.startsWith('/orders/') ||
+    path === '/profile') {
     if (!getStoredEmail()) {
       return <RedirectPage to="/login" />;
     }

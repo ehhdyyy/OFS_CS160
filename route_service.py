@@ -1,14 +1,3 @@
-"""
-Route Service — Google Maps API Wrapper
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Provides route, ETA, and distance calculations for delivery trips.
-Uses simulated data for development; swap to real Google Maps API
-by setting GOOGLE_MAPS_API_KEY in the environment.
-
-Usage:
-    from route_service import get_delivery_route, estimate_eta
-"""
-
 import os
 import math
 import datetime
@@ -35,14 +24,12 @@ SIMULATED_DESTINATIONS = [
     {"lat": 37.3300, "lng": -121.8845, "address": "864 S 2nd St, San Jose, CA 95113"},
 ]
 
-# Robot speed parameters (simulated)
 ROBOT_SPEED_MPH = 5.0
 ROBOT_PREP_MINUTES = 3
 
 
 def haversine_distance(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-    """Calculate distance between two GPS coordinates in miles."""
-    R = 3958.8  # Earth radius in miles
+    R = 3958.8
     lat1_r, lat2_r = math.radians(lat1), math.radians(lat2)
     dlat = math.radians(lat2 - lat1)
     dlng = math.radians(lng2 - lng1)
@@ -58,19 +45,14 @@ def estimate_eta(
     destination: Dict[str, float],
     speed_mph: float = ROBOT_SPEED_MPH,
 ) -> Dict:
-    """
-    Estimate time of arrival for a delivery trip.
-    Returns ETA in minutes and the estimated arrival datetime.
-    """
     distance = haversine_distance(
         origin["lat"], origin["lng"],
         destination["lat"], destination["lng"],
     )
 
-    # Robot travels at walking speed + prep time
     travel_minutes = (distance / speed_mph) * 60
     total_minutes = int(travel_minutes + ROBOT_PREP_MINUTES)
-    total_minutes = max(total_minutes, 5)  # Minimum 5 minutes
+    total_minutes = max(total_minutes, 5)
 
     arrival_time = datetime.datetime.now() + datetime.timedelta(minutes=total_minutes)
 
@@ -86,33 +68,21 @@ def get_delivery_route(
     destination_coords: Optional[Dict[str, float]] = None,
     order_id: Optional[int] = None,
 ) -> Dict:
-    """
-    Generate a delivery route from the store to a destination.
-    Returns route waypoints, distance, ETA, and a polyline-style path.
-
-    If GOOGLE_MAPS_API_KEY is set, uses real Google Maps Directions API.
-    Otherwise, returns a simulated route based on coordinates.
-    """
     origin = STORE_LOCATION
 
-    # Determine destination
     if destination_coords:
-        dest = destination_coords
+        dest = dict(destination_coords)
     elif order_id:
-        # Use consistent simulated destination based on order ID
         idx = (order_id - 1) % len(SIMULATED_DESTINATIONS)
-        dest = SIMULATED_DESTINATIONS[idx]
+        dest = dict(SIMULATED_DESTINATIONS[idx])
     else:
-        # Default destination
-        dest = SIMULATED_DESTINATIONS[0]
+        dest = dict(SIMULATED_DESTINATIONS[0])
 
     if destination_address:
         dest["address"] = destination_address
 
-    # Calculate ETA
     eta = estimate_eta(origin, dest)
 
-    # Generate intermediate waypoints for route polyline
     num_waypoints = 6
     route_points = []
     for i in range(num_waypoints + 1):
@@ -120,7 +90,6 @@ def get_delivery_route(
         lat = origin["lat"] + (dest["lat"] - origin["lat"]) * t
         lng = origin["lng"] + (dest["lng"] - origin["lng"]) * t
 
-        # Add slight curve to make route look realistic
         if 0 < t < 1:
             offset = math.sin(t * math.pi) * 0.001
             lng += offset
@@ -154,33 +123,25 @@ def get_progress_location(
     started_at: Optional[datetime.datetime],
     destination_coords: Optional[Dict[str, float]] = None,
 ) -> Dict:
-    """
-    Calculate the current position of a delivery robot based on elapsed time.
-    Returns current coordinates, progress percentage, and remaining ETA.
-    """
     origin = STORE_LOCATION
 
     if destination_coords:
-        dest = destination_coords
+        dest = dict(destination_coords)
     else:
         idx = (order_id - 1) % len(SIMULATED_DESTINATIONS)
-        dest = SIMULATED_DESTINATIONS[idx]
+        dest = dict(SIMULATED_DESTINATIONS[idx])
 
-    # Calculate total expected trip duration
     eta = estimate_eta(origin, dest)
     total_minutes = eta["travel_minutes"]
 
-    # Calculate progress
     progress = 0.0
     if started_at:
         elapsed = (datetime.datetime.now() - started_at).total_seconds() / 60
         progress = min(elapsed / max(total_minutes, 1), 1.0)
 
-    # Interpolate current position
     current_lat = origin["lat"] + (dest["lat"] - origin["lat"]) * progress
     current_lng = origin["lng"] + (dest["lng"] - origin["lng"]) * progress
 
-    # Remaining time
     remaining_minutes = max(int(total_minutes * (1 - progress)), 0)
     if 0 < progress < 1:
         remaining_minutes = max(remaining_minutes, 1)
@@ -210,17 +171,9 @@ def batch_route_optimization(
     max_weight_lbs: float = 200.0,
     max_orders: int = 10,
 ) -> List[Dict]:
-    """
-    Simple route optimization for batching multiple deliveries.
-    Groups orders by proximity and respects robot capacity constraints.
-
-    Each order dict should have: order_id, destination (lat/lng), weight_lbs
-    Returns a list of batches, each with ordered stops and total metrics.
-    """
     if not order_destinations:
         return []
 
-    # Sort orders by distance from store (nearest-first heuristic)
     origin = STORE_LOCATION
     for order in order_destinations:
         dest = order.get("destination", {})
@@ -239,8 +192,7 @@ def batch_route_optimization(
     for order in sorted_orders:
         weight = float(order.get("weight_lbs", 0))
 
-        if (len(current_batch) >= max_orders or
-                current_weight + weight > max_weight_lbs) and current_batch:
+        if (len(current_batch) >= max_orders or current_weight + weight > max_weight_lbs) and current_batch:
             batches.append(_finalize_batch(current_batch))
             current_batch = []
             current_weight = 0.0
@@ -255,7 +207,6 @@ def batch_route_optimization(
 
 
 def _finalize_batch(orders: List[Dict]) -> Dict:
-    """Build final batch metadata."""
     origin = STORE_LOCATION
     total_distance = 0.0
     prev = origin
@@ -268,7 +219,6 @@ def _finalize_batch(orders: List[Dict]) -> Dict:
         )
         prev = dest
 
-    # Return distance back to store
     total_distance += haversine_distance(
         prev.get("lat", origin["lat"]), prev.get("lng", origin["lng"]),
         origin["lat"], origin["lng"],

@@ -352,4 +352,20 @@
     grid-template-columns: 1fr 40px 65px 75px;
     font-size: 0.78rem;
   }
+
+  .order-history-track-btn {
+  border: none;
+  background: #16a34a;
+  color: white;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  }
+
+  .order-history-track-btn:hover {
+  background: #15803d;
+  }
+
+
 }
