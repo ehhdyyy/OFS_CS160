@@ -1,4 +1,4 @@
-import {  useState } from "react";
+import { useState } from "react";
 import { persistFrontendSession } from "./utils/authSession";
 
 const API_BASE = "http://localhost:8000";
@@ -44,17 +44,37 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  // Forgot password state
+  const [forgotView, setForgotView] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotStatus, setForgotStatus] = useState(""); // "sent" | ""
+  const [forgotError, setForgotError] = useState("");
+
   const switchMode = (target) => {
     setErrorMessage("");
     window.location.href=`/login?tab=${target}`;
   };
+
+  async function handleForgotPassword(e) {
+    e.preventDefault();
+    setForgotError("");
+    setIsLoading(true);
+    try {
+      await apiPost("/api/auth/forgot-password", { email: forgotEmail });
+      setForgotStatus("sent");
+    } catch (err) {
+      setForgotError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   async function handleLogin(e) {
     e.preventDefault();
     setErrorMessage("");
     setIsLoading(true);
     try {
-      const data = await apiPost("/api/auth/login", { email, password });
+      const data = await apiPost("/api/auth/login", { email, password, remember_me: rememberMe });
       
       const { adminEnabled } = persistFrontendSession({
         userId: data.userId,
@@ -508,12 +528,6 @@ export default function LoginPage() {
           <div className="logo-icon">🛒</div>
           <span className="logo-text">OFS</span>
         </a>
-        <ul className="navbar-links">
-          <li><a href="/home">Home</a></li>
-          <li><a href="/shop">Shop</a></li>
-          <li><a href="/about">About</a></li>
-          <li><a href="/contact">Contact</a></li>
-        </ul>
       </nav>
 
       <div className="page-body">
@@ -536,116 +550,168 @@ export default function LoginPage() {
           {/* Right form panel */}
           <div className="panel-right">
             <div className="form-inner">
-              <h1>{mode === "login" ? "Welcome Back" : "Create Account"}</h1>
-              <p className="form-sub">
-                {mode === "login" ? "Sign in to your OFS account" : "Join OFS and start ordering"}
-              </p>
 
-              <form onSubmit={mode === "login" ? handleLogin : handleRegister}>
-                {mode === "register" && (
-                  <div className="field">
-                    <label>Full Name</label>
-                    <div className="input-wrap">
-                      <input
-                        type="text"
-                        placeholder="Your full name"
-                        value={name}
-                        onChange={e => setName(e.target.value)}
-                        required
-                      />
-                      <span className="input-icon">👤</span>
+              {/* ── Forgot password view ── */}
+              {forgotView ? (
+                <>
+                  <h1 style={{ fontSize: '2rem' }}>Reset Password</h1>
+                  <p className="form-sub">
+                    {forgotStatus === "sent"
+                      ? "Check your email for a reset link. It expires in 1 hour."
+                      : "Enter your email and we'll send you a reset link."}
+                  </p>
+
+                  {forgotStatus !== "sent" && (
+                    <form onSubmit={handleForgotPassword}>
+                      <div className="field">
+                        <label>Email</label>
+                        <div className="input-wrap">
+                          <input
+                            type="email"
+                            placeholder="Enter your email"
+                            value={forgotEmail}
+                            onChange={e => setForgotEmail(e.target.value)}
+                            required
+                          />
+                          <span className="input-icon">✉️</span>
+                        </div>
+                      </div>
+
+                      {forgotError && <div className="error-box">{forgotError}</div>}
+
+                      <button className="btn-primary" type="submit" disabled={isLoading}>
+                        {isLoading ? "Please wait…" : "Send Reset Link"}
+                      </button>
+                    </form>
+                  )}
+
+                  <div className="switch-mode" style={{ marginTop: '1.4rem' }}>
+                    <span onClick={() => { setForgotView(false); setForgotStatus(""); setForgotError(""); }}>
+                      ← Back to Sign In
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h1>{mode === "login" ? "Welcome Back" : "Create Account"}</h1>
+                  <p className="form-sub">
+                    {mode === "login" ? "Sign in to your OFS account" : "Join OFS and start ordering"}
+                  </p>
+
+                  <form onSubmit={mode === "login" ? handleLogin : handleRegister}>
+                    {mode === "register" && (
+                      <div className="field">
+                        <label>Full Name</label>
+                        <div className="input-wrap">
+                          <input
+                            type="text"
+                            placeholder="Your full name"
+                            value={name}
+                            onChange={e => setName(e.target.value)}
+                            required
+                          />
+                          <span className="input-icon">👤</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {mode === "register" && (
+                      <div className="field">
+                        <label>Invite Code <span style={{ fontWeight: 400, color: 'var(--text-light)' }}>(optional)</span></label>
+                        <div className="input-wrap">
+                          <input
+                            type="text"
+                            placeholder="e.g. OFS-ABC12345"
+                            value={inviteCode}
+                            onChange={e => setInviteCode(e.target.value)}
+                          />
+                          <span className="input-icon">🎟️</span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="field">
+                      <label>Email</label>
+                      <div className="input-wrap">
+                        <input
+                          type="email"
+                          placeholder="Enter your email"
+                          value={email}
+                          onChange={e => setEmail(e.target.value)}
+                          required
+                        />
+                        <span className="input-icon">👤</span>
+                      </div>
                     </div>
-                  </div>
-                )}
 
-                {mode === "register" && (
-                  <div className="field">
-                    <label>Invite Code <span style={{ fontWeight: 400, color: 'var(--text-light)' }}>(optional)</span></label>
-                    <div className="input-wrap">
-                      <input
-                        type="text"
-                        placeholder="e.g. OFS-ABC12345"
-                        value={inviteCode}
-                        onChange={e => setInviteCode(e.target.value)}
-                      />
-                      <span className="input-icon">🎟️</span>
+                    <div className="field">
+                      <label>Password</label>
+                      <div className="input-wrap">
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          placeholder="Enter your password"
+                          value={password}
+                          onChange={e => setPassword(e.target.value)}
+                          required
+                          minLength={6}
+                          maxLength={72}
+                        />
+                        <span
+                          className="input-icon"
+                          onClick={() => setShowPassword(p => !p)}
+                          style={{ cursor: 'pointer', pointerEvents: 'auto', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-mid)', letterSpacing: '0.01em' }}
+                          title={showPassword ? "Hide password" : "Show password"}
+                        >
+                          {showPassword ? "Hide" : "Show"}
+                        </span>
+                      </div>
                     </div>
+
+                    {mode === "login" && (
+                      <div className="row-extras">
+                        <label className="remember">
+                          <input
+                            type="checkbox"
+                            checked={rememberMe}
+                            onChange={e => setRememberMe(e.target.checked)}
+                          />
+                          Remember me
+                        </label>
+                        <button
+                          type="button"
+                          className="forgot"
+                          onClick={() => { setForgotView(true); setForgotEmail(email); setForgotError(""); setForgotStatus(""); }}
+                        >
+                          Forgot password?
+                        </button>
+                      </div>
+                    )}
+
+                    {errorMessage && <div className="error-box">{errorMessage}</div>}
+
+                    <button className="btn-primary" type="submit" disabled={isLoading}>
+                      {isLoading ? "Please wait…" : mode === "login" ? "Sign In" : "Create Account"}
+                    </button>
+                  </form>
+
+                  <div className="switch-mode">
+                    {mode === "login" ? (
+                      <>Don't have an account?{" "}
+                        <span onClick={() => { switchMode("register") }}>
+                          Create Account
+                        </span>
+                      </>
+                    ) : (
+                      <>Already have an account?{" "}
+                        <span onClick={() => { switchMode("login") }}>
+                          Sign In
+                        </span>
+                      </>
+                    )}
                   </div>
-                )}
+                </>
+              )}
 
-                <div className="field">
-                  <label>Email</label>
-                  <div className="input-wrap">
-                    <input
-                      type="email"
-                      placeholder="Enter your email"
-                      value={email}
-                      onChange={e => setEmail(e.target.value)}
-                      required
-                    />
-                    <span className="input-icon">👤</span>
-                  </div>
-                </div>
-
-                <div className="field">
-                  <label>Password</label>
-                  <div className="input-wrap">
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      placeholder="Enter your password"
-                      value={password}
-                      onChange={e => setPassword(e.target.value)}
-                      required
-                      minLength={6}
-                      maxLength={72}
-                    />
-                    <span
-                      className="input-icon"
-                      onClick={() => setShowPassword(p => !p)}
-                      style={{ cursor: 'pointer', pointerEvents: 'auto', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-mid)', letterSpacing: '0.01em' }}
-                      title={showPassword ? "Hide password" : "Show password"}
-                    >
-                      {showPassword ? "Hide" : "Show"}
-                    </span>
-                  </div>
-                </div>
-
-                {mode === "login" && (
-                  <div className="row-extras">
-                    <label className="remember">
-                      <input
-                        type="checkbox"
-                        checked={rememberMe}
-                        onChange={e => setRememberMe(e.target.checked)}
-                      />
-                      Remember me
-                    </label>
-                    <button type="button" className="forgot">Forgot password?</button>
-                  </div>
-                )}
-
-                {errorMessage && <div className="error-box">{errorMessage}</div>}
-
-                <button className="btn-primary" type="submit" disabled={isLoading}>
-                  {isLoading ? "Please wait…" : mode === "login" ? "Sign In" : "Create Account"}
-                </button>
-              </form>
-
-              <div className="switch-mode">
-                {mode === "login" ? (
-                  <>Don't have an account?{" "}
-                    <span onClick={() => { switchMode("register") }}>
-                      Create Account
-                    </span>
-                  </>
-                ) : (
-                  <>Already have an account?{" "}
-                    <span onClick={() => { switchMode("login") }}>
-                      Sign In
-                    </span>
-                  </>
-                )}
-              </div>
             </div>
           </div>
         </div>

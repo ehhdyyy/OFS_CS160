@@ -11,6 +11,8 @@ import jwt
 import datetime
 import os
 import secrets
+import smtplib
+from email.mime.text import MIMEText
 from route_service import get_delivery_route, get_progress_location, estimate_eta
 
 load_dotenv()
@@ -39,6 +41,12 @@ DB_NAME = os.getenv("DB_NAME", "ofs_db")
 
 JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-env")
 JWT_EXPIRY_HOURS = 24
+
+EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_USER = os.getenv("EMAIL_USER", "")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 # ── Database connection ─────────────────────────────────────────────────────
 DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
@@ -79,6 +87,34 @@ def hash_password(plain: str) -> str:
 
 def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
+
+
+def send_password_reset_email(to_email: str, reset_url: str) -> None:
+    if not EMAIL_USER or not EMAIL_PASSWORD:
+        print(f"[DEV] Password reset link for {to_email}: {reset_url}")
+        return
+
+    body = f"""Hi,
+
+You requested a password reset for your OFS account.
+
+Click the link below to reset your password (expires in 1 hour):
+
+{reset_url}
+
+If you did not request this, you can safely ignore this email.
+
+— The OFS Team
+"""
+    msg = MIMEText(body)
+    msg["Subject"] = "Reset your OFS password"
+    msg["From"] = EMAIL_USER
+    msg["To"] = to_email
+
+    with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
+        server.starttls()
+        server.login(EMAIL_USER, EMAIL_PASSWORD)
+        server.sendmail(EMAIL_USER, to_email, msg.as_string())
 
 
 def create_jwt(user_id: int, role: str) -> str:
@@ -236,6 +272,16 @@ def require_role(*allowed_roles: str):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    remember_me: bool = False
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
 
 
 class RegisterRequest(BaseModel):
@@ -471,13 +517,15 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token = create_jwt(user.id, user.role)
-    response.set_cookie(
+    cookie_kwargs = dict(
         key="auth_token",
         value=token,
         httponly=True,
-        max_age=JWT_EXPIRY_HOURS * 3600,
         samesite="lax",
     )
+    if body.remember_me:
+        cookie_kwargs["max_age"] = 30 * 24 * 3600  # 30 days
+    response.set_cookie(**cookie_kwargs)
 
     return {
         "message": "Login successful",
@@ -491,6 +539,76 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
 def logout(response: Response):
     response.delete_cookie("auth_token")
     return {"message": "Logged out"}
+
+
+@app.post("/api/auth/forgot-password")
+def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    user = db.execute(
+        text("SELECT id, email FROM users WHERE email = :email"),
+        {"email": body.email},
+    ).fetchone()
+
+    # Always return success to avoid exposing whether an email is registered
+    if not user:
+        return {"message": "If that email is registered, a reset link has been sent."}
+
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+
+    db.execute(
+        text(
+            """
+            INSERT INTO password_reset_tokens (user_id, token, expires_at)
+            VALUES (:user_id, :token, :expires_at)
+            """
+        ),
+        {"user_id": user.id, "token": token, "expires_at": expires_at},
+    )
+    db.commit()
+
+    reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
+    try:
+        send_password_reset_email(user.email, reset_url)
+    except Exception as e:
+        print(f"[ERROR] Failed to send reset email: {e}")
+
+    return {"message": "If that email is registered, a reset link has been sent."}
+
+
+@app.post("/api/auth/reset-password")
+def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    row = db.execute(
+        text(
+            """
+            SELECT id, user_id, expires_at, used
+            FROM password_reset_tokens
+            WHERE token = :token
+            """
+        ),
+        {"token": body.token},
+    ).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+    if row.used:
+        raise HTTPException(status_code=400, detail="This reset link has already been used")
+    if datetime.datetime.utcnow() > row.expires_at:
+        raise HTTPException(status_code=400, detail="This reset link has expired")
+
+    db.execute(
+        text("UPDATE users SET password_hash = :hash WHERE id = :uid"),
+        {"hash": hash_password(body.new_password), "uid": row.user_id},
+    )
+    db.execute(
+        text("UPDATE password_reset_tokens SET used = TRUE WHERE id = :id"),
+        {"id": row.id},
+    )
+    db.commit()
+
+    return {"message": "Password updated successfully"}
 
 
 @app.get("/api/auth/me")
