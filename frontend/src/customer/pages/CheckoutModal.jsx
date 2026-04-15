@@ -14,8 +14,8 @@ function hasAddress(addr) {
   return Boolean(addr && addr.line1 && addr.city);
 }
 
-function hasPaymentInfo(pay) {
-  return Boolean(pay && pay.cardholderName && pay.cardLast4);
+function hasSavedPaymentMethods(methods) {
+  return Array.isArray(methods) && methods.length > 0;
 }
 
 export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, deliveryFee, finalTotal, onConfirmPayment }) {
@@ -24,7 +24,7 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
    *   'confirm'          confirm saved shipping address
    *   'address'          manual shipping address input
    *   'billing'          billing address (same-as-shipping / confirm-saved / manual)
-   *   'confirm-payment'  confirm saved card
+   *   'confirm-payment'  choose among saved cards
    *   'payment'          manual card form
    */
   const [step, setStep] = useState('address');
@@ -43,7 +43,9 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
   const [savedBilling, setSavedBilling] = useState(null);
 
   // Payment
-  const [savedPayment, setSavedPayment] = useState(null);
+  const [savedPaymentMethods, setSavedPaymentMethods] = useState([]);
+  const [selectedSavedPaymentId, setSelectedSavedPaymentId] = useState(null);
+  const [savedCardCvv, setSavedCardCvv] = useState('');
   const [cardName, setCardName] = useState('');
   const [cardNumber, setCardNumber] = useState('');
   const [expiry, setExpiry] = useState('');
@@ -64,23 +66,32 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
     setError('');
     setSavedShipping(null);
     setSavedBilling(null);
-    setSavedPayment(null);
+    setSavedPaymentMethods([]);
+    setSelectedSavedPaymentId(null);
+    setSavedCardCvv('');
+    setCardName('');
+    setCardNumber('');
+    setExpiry('');
+    setCvv('');
 
     fetch(`${API_BASE}/api/profile`, { credentials: 'include' })
       .then((r) => r.json())
       .then((data) => {
         const shipping = data.shippingAddress || {};
         const billing  = data.billingAddress  || {};
-        const payment  = data.paymentInfo     || {};
+        const paymentMethods = Array.isArray(data.paymentMethods) ? data.paymentMethods : [];
         setSavedShipping(shipping);
         setSavedBilling(billing);
-        setSavedPayment(payment);
+        setSavedPaymentMethods(paymentMethods);
+        const defaultMethod = paymentMethods.find((method) => method.isDefault) || paymentMethods[0] || null;
+        setSelectedSavedPaymentId(defaultMethod ? defaultMethod.id : null);
         if (hasAddress(shipping)) setStep('confirm');
       })
       .catch(() => {
         setSavedShipping({});
         setSavedBilling({});
-        setSavedPayment({});
+        setSavedPaymentMethods([]);
+        setSelectedSavedPaymentId(null);
       });
   }, [isOpen]);
 
@@ -96,7 +107,7 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
 
   function goToPaymentStep() {
     setError('');
-    if (hasPaymentInfo(savedPayment)) {
+    if (hasSavedPaymentMethods(savedPaymentMethods)) {
       setStep('confirm-payment');
     } else {
       setStep('payment');
@@ -114,6 +125,10 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
 
   function backFromPayment() {
     setError('');
+    if (hasSavedPaymentMethods(savedPaymentMethods)) {
+      setStep('confirm-payment');
+      return;
+    }
     setStep('billing');
   }
 
@@ -159,6 +174,14 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
   }
 
   async function submitOrder() {
+    if (step === 'confirm-payment' && !selectedSavedPaymentId) {
+      setError('Please choose a saved card or use a one-time card.');
+      return;
+    }
+    if (step === 'confirm-payment' && savedCardCvv.length < 3) {
+      setError('Please enter your card CVV.');
+      return;
+    }
     setIsProcessing(true);
     try {
       await onConfirmPayment(deliveryAddress.trim() || undefined);
@@ -433,26 +456,60 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
           )}
 
           {/* ── Step 3a: Confirm saved card ──────────────────────────────── */}
-          {step === 'confirm-payment' && savedPayment && (
+          {step === 'confirm-payment' && (
             <div className="checkout-section">
               <h3>Payment Details</h3>
-              <div className="checkout-saved-address-card">
-                <p className="checkout-saved-address-label">Pay with your saved card?</p>
-                <p className="checkout-saved-address-value">
-                  {savedPayment.cardType ? `${savedPayment.cardType} ` : ''}
-                  •••• •••• •••• {savedPayment.cardLast4}
-                </p>
-                {savedPayment.cardholderName && (
-                  <p className="checkout-saved-address-value" style={{ marginTop: '0.2rem', fontSize: '0.88rem' }}>
-                    {savedPayment.cardholderName}
-                    {savedPayment.cardExpiry ? ` · Exp ${savedPayment.cardExpiry}` : ''}
-                  </p>
-                )}
+              <div className="checkout-saved-methods">
+                {savedPaymentMethods.map((method) => (
+                  <label key={method.id} className="checkout-saved-method-card">
+                    <input
+                      type="radio"
+                      name="saved-payment-method"
+                      checked={selectedSavedPaymentId === method.id}
+                      onChange={() => setSelectedSavedPaymentId(method.id)}
+                    />
+                    <div>
+                      <p className="checkout-saved-address-value">
+                        {method.cardType ? `${method.cardType} ` : ''}
+                        •••• •••• •••• {method.cardLast4}
+                        {method.isDefault ? ' · Default' : ''}
+                      </p>
+                      <p className="checkout-saved-address-value" style={{ marginTop: '0.2rem', fontSize: '0.88rem' }}>
+                        {method.cardholderName}
+                        {method.cardExpiry ? ` · Exp ${method.cardExpiry}` : ''}
+                      </p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              <div className="checkout-field" style={{ maxWidth: '180px' }}>
+                <label>CVV</label>
+                <input
+                  type="password"
+                  placeholder="123"
+                  value={savedCardCvv}
+                  onChange={(e) => setSavedCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  maxLength={4}
+                  disabled={isProcessing}
+                  autoComplete="off"
+                />
               </div>
               {error && <p className="checkout-error">{error}</p>}
               <div className="checkout-btn-row">
                 <button type="button" className="checkout-back-btn" onClick={backFromPayment} disabled={isProcessing}>
                   ← Back
+                </button>
+                <button
+                  type="button"
+                  className="checkout-back-btn"
+                  onClick={() => {
+                    setError('');
+                    setSavedCardCvv('');
+                    setStep('payment');
+                  }}
+                  disabled={isProcessing}
+                >
+                  Use one-time card
                 </button>
                 <button type="button" className="checkout-pay-btn" onClick={submitOrder} disabled={isProcessing}>
                   {isProcessing ? 'Processing...' : `Pay $${finalTotal.toFixed(2)}`}
@@ -465,6 +522,9 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
           {step === 'payment' && (
             <form onSubmit={handlePayment} className="checkout-section">
               <h3>Payment Details</h3>
+              <p className="checkout-field-hint">
+                This card will be used for this order only and will not be saved to your profile.
+              </p>
               <div className="checkout-field">
                 <label>Name on Card</label>
                 <input type="text" placeholder="Jane Smith" value={cardName} onChange={(e) => setCardName(e.target.value)} disabled={isProcessing} />

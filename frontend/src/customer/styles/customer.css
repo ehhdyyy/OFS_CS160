@@ -493,6 +493,112 @@
   line-height: 1.5;
 }
 
+.customer-app .profile-inline-actions {
+  margin-bottom: 0.75rem;
+}
+
+.customer-app .profile-inline-note {
+  margin-top: 1rem;
+}
+
+.customer-app .profile-secondary-btn {
+  border: 1px solid var(--border);
+  background: white;
+  color: var(--text-dark);
+  border-radius: 10px;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.customer-app .profile-secondary-btn:hover {
+  background: #f8fafc;
+}
+
+.customer-app .profile-secondary-danger {
+  color: #b91c1c;
+}
+
+.customer-app .profile-subtitle {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+
+.customer-app .profile-form-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.customer-app .profile-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.92rem;
+  color: var(--text-mid);
+}
+
+.customer-app .profile-checkbox-row input {
+  accent-color: var(--green);
+}
+
+.customer-app .profile-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.customer-app .profile-card-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1rem;
+  background: #fbfffc;
+}
+
+.customer-app .profile-card-item-default {
+  border-color: #86efac;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.08);
+}
+
+.customer-app .profile-card-title {
+  font-weight: 700;
+  color: var(--text-dark);
+}
+
+.customer-app .profile-card-meta {
+  margin-top: 0.25rem;
+  color: var(--text-mid);
+  font-size: 0.9rem;
+}
+
+.customer-app .profile-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.customer-app .profile-card-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
 .customer-app .profile-danger-text {
   color: #b91c1c;
 }
@@ -506,6 +612,16 @@
 @media (max-width: 600px) {
   .customer-app .profile-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .customer-app .profile-card-item,
+  .customer-app .profile-form-header-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .customer-app .profile-card-actions {
+    justify-content: flex-start;
   }
 }
 

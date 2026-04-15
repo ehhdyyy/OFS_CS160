@@ -145,6 +145,18 @@ CREATE TABLE password_reset_tokens (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE payment_methods (
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    user_id         INT NOT NULL,
+    cardholder_name VARCHAR(255) NOT NULL,
+    card_last4      CHAR(4) NOT NULL,
+    card_expiry     VARCHAR(7) NULL,
+    card_type       VARCHAR(30) NULL,
+    is_default      BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE invite_codes (
     id          INT AUTO_INCREMENT PRIMARY KEY,
     code        VARCHAR(20) NOT NULL UNIQUE,
