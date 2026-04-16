@@ -285,6 +285,9 @@ class TestCheckout:
         assert "order_id" in data
         assert data["payment_status"] == "paid"
         assert "total_price" in data
+        assert data["status"] in {"processing", "out_for_delivery"}
+        assert "status_label" in data
+        assert "robot_label" in data
 
     def test_checkout_clears_cart(self):
         import time

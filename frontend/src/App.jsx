@@ -3,6 +3,7 @@ import LoginPage from './LoginPage';
 import LandingPage from './LandingPage';
 import AdminApp from './admin/AdminApp';
 import CustomerApp from './customer/CustomerApp';
+import ResetPasswordPage from './ResetPasswordPage';
 import { isAdminUiEnabled, getStoredEmail, persistFrontendSession } from './utils/authSession';
 
 const API_BASE = 'http://localhost:8000';
@@ -106,11 +107,19 @@ export default function App() {
     return <LoginPage />;
   }
 
+  if (path === '/reset-password') {
+    return <ResetPasswordPage />;
+  }
+
   if (path === '/account' || path === '/customer') {
     return <RedirectPage to="/home" />;
   }
 
-  if (path === '/home' || path.startsWith('/product/') || path === '/orders') {
+  if (  path === '/home' ||
+    path.startsWith('/product/') ||
+    path === '/orders' ||
+    path.startsWith('/orders/') ||
+    path === '/profile') {
     if (!getStoredEmail()) {
       return <RedirectPage to="/login" />;
     }

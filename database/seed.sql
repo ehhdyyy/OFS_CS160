@@ -64,12 +64,12 @@ INSERT INTO inventory (product_id, quantity, low_stock_threshold) VALUES
   (18,  9,  5);
 
 -- Robots (exactly 5 total)
-INSERT INTO robots (id, status) VALUES
-  (1, 'charging'),
-  (2, 'charging'),
-  (3, 'offline'),
-  (4, 'charging'),
-  (5, 'on_delivery');
+INSERT INTO robots (id, status, battery_pct, charging_started_at) VALUES
+  (1, 'charging',    100, NULL),
+  (2, 'charging',    100, NULL),
+  (3, 'offline',      40, NULL),
+  (4, 'charging',    100, NULL),
+  (5, 'on_delivery',  62, NULL);
 
 -- Deliveries (all within the single Monday-Sunday week)
 INSERT INTO deliveries (id, robot_id, status, started_at, completed_at) VALUES
