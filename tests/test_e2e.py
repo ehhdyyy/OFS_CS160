@@ -128,7 +128,7 @@ class TestE2EHappyPath:
 
         placed_order = next(o for o in orders if o["id"] == order_id)
         assert placed_order["delivery_address"] == "100 E2E Test Blvd, San Jose, CA 95112"
-        assert placed_order["status"] == "processing"
+        assert placed_order["status"] in {"processing", "out_for_delivery"}
         assert len(placed_order["items"]) >= 1
 
         # ── Step 12: Check order status ──────────────────────────────

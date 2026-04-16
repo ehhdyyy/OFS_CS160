@@ -77,8 +77,10 @@ CREATE TABLE inventory (
 );
 
 CREATE TABLE robots (
-    id       INT AUTO_INCREMENT PRIMARY KEY,
-    status   ENUM('on_delivery', 'charging', 'offline') NOT NULL DEFAULT 'charging'
+    id                  INT AUTO_INCREMENT PRIMARY KEY,
+    status              ENUM('on_delivery', 'charging', 'offline') NOT NULL DEFAULT 'charging',
+    battery_pct         INT NOT NULL DEFAULT 100,
+    charging_started_at TIMESTAMP NULL DEFAULT NULL
 );
 
 CREATE TABLE deliveries (
