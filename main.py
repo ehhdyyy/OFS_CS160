@@ -56,6 +56,10 @@ SessionLocal = sessionmaker(bind=engine)
 # ── Constants ───────────────────────────────────────────────────────────────
 FREE_DELIVERY_MAX_WEIGHT_LBS = Decimal("20.00")
 HEAVY_ORDER_DELIVERY_FEE = Decimal("10.00")
+ROBOT_ASSIGNMENT_MIN_BATTERY_PCT = 100
+ROBOT_CHARGE_RATE_PER_MINUTE = 4
+ROBOT_BATTERY_DRAIN_PER_MILE = 12
+ROBOT_MIN_POST_DELIVERY_BATTERY_PCT = 15
 SEVEN_DAY_WINDOW_START = datetime.date(2026, 3, 30)
 SEVEN_DAY_WINDOW_END = datetime.date(2026, 4, 5)
 
@@ -242,6 +246,148 @@ def delivery_color(status: str) -> str:
 
 def calculate_delivery_fee(total_weight: Decimal) -> Decimal:
     return Decimal("0.00") if total_weight < FREE_DELIVERY_MAX_WEIGHT_LBS else HEAVY_ORDER_DELIVERY_FEE
+
+
+def estimate_delivery_battery_pct(order_id: int, delivery_address: Optional[str]) -> int:
+    """Estimate remaining robot battery after finishing a delivery."""
+    route_data = get_delivery_route(
+        destination_address=delivery_address,
+        order_id=order_id,
+    )
+    distance = Decimal(str(route_data["distance_miles"] or 0))
+    drain = int((distance * Decimal(str(ROBOT_BATTERY_DRAIN_PER_MILE))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    return max(ROBOT_MIN_POST_DELIVERY_BATTERY_PCT, 100 - max(drain, 1))
+
+
+def sync_charging_robots(db: Session) -> None:
+    """Advance charging robots toward full battery over elapsed time."""
+    rows = db.execute(
+        text(
+            """
+            SELECT id, battery_pct, charging_started_at
+            FROM robots
+            WHERE status = 'charging'
+              AND charging_started_at IS NOT NULL
+              AND battery_pct < 100
+            """
+        )
+    ).mappings().all()
+
+    if not rows:
+        return
+
+    now = datetime.datetime.now()
+    updated = False
+
+    for row in rows:
+        elapsed_minutes = int((now - row["charging_started_at"]).total_seconds() / 60)
+        if elapsed_minutes <= 0:
+            continue
+
+        new_pct = min(100, int(row["battery_pct"] or 0) + elapsed_minutes * ROBOT_CHARGE_RATE_PER_MINUTE)
+        db.execute(
+            text(
+                """
+                UPDATE robots
+                SET battery_pct = :battery_pct,
+                    charging_started_at = :charging_started_at
+                WHERE id = :robot_id
+                """
+            ),
+            {
+                "robot_id": int(row["id"]),
+                "battery_pct": new_pct,
+                "charging_started_at": None if new_pct >= 100 else now,
+            },
+        )
+        updated = True
+
+    if updated:
+        db.commit()
+
+
+def sync_in_transit_deliveries(db: Session, order_id: Optional[int] = None) -> None:
+    """Auto-complete in-transit deliveries once their simulated ETA has elapsed."""
+    params = {}
+    order_filter = ""
+    if order_id is not None:
+        order_filter = " AND o.id = :order_id"
+        params["order_id"] = order_id
+
+    rows = db.execute(
+        text(
+            f"""
+            SELECT
+                d.id AS delivery_id,
+                d.robot_id,
+                d.started_at,
+                o.id AS order_id,
+                o.delivery_address
+            FROM deliveries d
+            JOIN orders o ON o.delivery_id = d.id
+            WHERE d.status = 'in_transit'
+            {order_filter}
+            """
+        ),
+        params,
+    ).mappings().all()
+
+    if not rows:
+        return
+
+    updated = False
+    now = datetime.datetime.now()
+
+    for row in rows:
+        if not row["started_at"]:
+            continue
+
+        route_data = get_delivery_route(
+            destination_address=row["delivery_address"],
+            order_id=int(row["order_id"]),
+        )
+        eta_minutes = max(int(route_data["eta_minutes"]), 1)
+        elapsed_minutes = (now - row["started_at"]).total_seconds() / 60
+
+        if elapsed_minutes < eta_minutes:
+            continue
+
+        db.execute(
+            text(
+                """
+                UPDATE deliveries
+                SET status = 'delivered',
+                    completed_at = COALESCE(completed_at, NOW())
+                WHERE id = :delivery_id
+                """
+            ),
+            {"delivery_id": int(row["delivery_id"])},
+        )
+        db.execute(
+            text(
+                """
+                UPDATE robots
+                SET status = 'charging',
+                    battery_pct = :battery_pct,
+                    charging_started_at = NOW()
+                WHERE id = :robot_id
+                """
+            ),
+            {
+                "robot_id": int(row["robot_id"]),
+                "battery_pct": estimate_delivery_battery_pct(int(row["order_id"]), row["delivery_address"]),
+            },
+        )
+        updated = True
+
+    if updated:
+        db.commit()
+
+
+def sync_robot_state(db: Session, order_id: Optional[int] = None) -> None:
+    """Refresh both charging progress and delivery completion before reads."""
+    sync_charging_robots(db)
+    sync_in_transit_deliveries(db, order_id=order_id)
 
 
 # ── Auth dependencies ───────────────────────────────────────────────────────
@@ -1366,6 +1512,7 @@ def checkout_cart(
     db: Session = Depends(get_db),
 ):
     try:
+        sync_robot_state(db)
         cart_id, cart_rows = fetch_cart_items(db, current_user["userId"])
         if not cart_rows:
             raise HTTPException(status_code=400, detail="Cart is empty")
@@ -1407,18 +1554,61 @@ def checkout_cart(
         delivery_fee = calculate_delivery_fee(total_weight)
         total_price = (subtotal + delivery_fee).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
+        assigned_delivery_id = None
+        assigned_robot_id = None
+
+        available_robot = db.execute(
+            text(
+                """
+                SELECT id
+                FROM robots
+                WHERE status = 'charging'
+                  AND battery_pct >= :min_battery
+                  AND charging_started_at IS NULL
+                ORDER BY id ASC
+                LIMIT 1
+                """
+            ),
+            {"min_battery": ROBOT_ASSIGNMENT_MIN_BATTERY_PCT},
+        ).fetchone()
+
+        if available_robot:
+            delivery_result = db.execute(
+                text(
+                    """
+                    INSERT INTO deliveries (robot_id, status, started_at)
+                    VALUES (:robot_id, 'in_transit', NOW())
+                    """
+                ),
+                {"robot_id": available_robot.id},
+            )
+            assigned_delivery_id = int(delivery_result.lastrowid)
+            assigned_robot_id = int(available_robot.id)
+            db.execute(
+                text(
+                    """
+                    UPDATE robots
+                    SET status = 'on_delivery',
+                        charging_started_at = NULL
+                    WHERE id = :robot_id
+                    """
+                ),
+                {"robot_id": assigned_robot_id},
+            )
+
         order_result = db.execute(
             text(
                 """
                 INSERT INTO orders (
                     user_id, delivery_id, delivery_address, delivery_fee, total_price, total_weight, payment_status, paid_at, created_at
                 ) VALUES (
-                    :user_id, NULL, :delivery_address, :delivery_fee, :total_price, :total_weight, 'paid', NOW(), NOW()
+                    :user_id, :delivery_id, :delivery_address, :delivery_fee, :total_price, :total_weight, 'paid', NOW(), NOW()
                 )
                 """
             ),
             {
                 "user_id": current_user["userId"],
+                "delivery_id": assigned_delivery_id,
                 "delivery_address": delivery_address,
                 "delivery_fee": float(delivery_fee),
                 "total_price": float(total_price),
@@ -1460,9 +1650,15 @@ def checkout_cart(
         db.execute(text("DELETE FROM cart_items WHERE cart_id = :cart_id"), {"cart_id": cart_id})
         db.commit()
 
+        order_status = "out_for_delivery" if assigned_delivery_id else "processing"
+
         return {
             "message": "Checkout successful",
             "order_id": order_id,
+            "delivery_id": assigned_delivery_id,
+            "status": order_status,
+            "status_label": legacy_status_label(order_status),
+            "robot_label": robot_label(assigned_robot_id),
             "payment_status": "paid",
             "delivery_fee": float(delivery_fee),
             "total_weight_lbs": float(total_weight.quantize(Decimal("0.01"))),
@@ -1483,6 +1679,7 @@ def get_my_orders(
     db: Session = Depends(get_db),
 ):
     try:
+        sync_robot_state(db)
         order_rows = db.execute(
             text(
                 """
@@ -1583,12 +1780,22 @@ def get_admin_dashboard(
     db: Session = Depends(get_db),
 ):
     try:
+        sync_robot_state(db)
         total_orders = db.execute(text("SELECT COUNT(*) FROM orders")).scalar() or 0
         active_deliveries = db.execute(
             text("SELECT COUNT(*) FROM deliveries WHERE status = 'in_transit'")
         ).scalar() or 0
         available_robots = db.execute(
-            text("SELECT COUNT(*) FROM robots WHERE status = 'charging'")
+            text(
+                """
+                SELECT COUNT(*)
+                FROM robots
+                WHERE status = 'charging'
+                  AND battery_pct >= :min_battery
+                  AND charging_started_at IS NULL
+                """
+            ),
+            {"min_battery": ROBOT_ASSIGNMENT_MIN_BATTERY_PCT},
         ).scalar() or 0
         low_stock_items = db.execute(
             text("SELECT COUNT(*) FROM inventory WHERE quantity <= low_stock_threshold")
@@ -1906,6 +2113,7 @@ def get_admin_orders(
     db: Session = Depends(get_db),
 ):
     try:
+        sync_robot_state(db)
         conditions = []
         params = {}
 
@@ -1969,7 +2177,15 @@ def get_admin_orders(
         ).mappings().all()
 
         active_robots = db.execute(
-            text("SELECT COUNT(*) FROM robots WHERE status IN ('charging', 'on_delivery')")
+            text(
+                """
+                SELECT COUNT(*)
+                FROM robots
+                WHERE status = 'on_delivery'
+                   OR (status = 'charging' AND battery_pct >= :min_battery AND charging_started_at IS NULL)
+                """
+            ),
+            {"min_battery": ROBOT_ASSIGNMENT_MIN_BATTERY_PCT},
         ).scalar() or 0
         pending_deliveries = db.execute(text("SELECT COUNT(*) FROM orders WHERE delivery_id IS NULL")).scalar() or 0
 
@@ -2357,6 +2573,7 @@ def get_admin_deliveries(
     db: Session = Depends(get_db),
 ):
     try:
+        sync_robot_state(db)
         conditions = ["DATE(COALESCE(d.started_at, o.created_at)) >= DATE_SUB(CURDATE(), INTERVAL :days_minus_one DAY)"]
         params = {"days_minus_one": max(days - 1, 0)}
 
@@ -2464,6 +2681,7 @@ def get_admin_robots(
     db: Session = Depends(get_db),
 ):
     try:
+        sync_robot_state(db)
         conditions = []
         params = {}
 
@@ -2487,6 +2705,8 @@ def get_admin_robots(
                 SELECT
                     r.id,
                     r.status,
+                    r.battery_pct,
+                    r.charging_started_at,
                     active_delivery.id AS active_delivery_id,
                     active_delivery.started_at,
                     COUNT(active_orders.id) AS active_order_count
@@ -2495,7 +2715,7 @@ def get_admin_robots(
                     ON active_delivery.robot_id = r.id AND active_delivery.status = 'in_transit'
                 LEFT JOIN orders active_orders ON active_orders.delivery_id = active_delivery.id
                 {where_clause}
-                GROUP BY r.id, r.status, active_delivery.id, active_delivery.started_at
+                GROUP BY r.id, r.status, r.battery_pct, r.charging_started_at, active_delivery.id, active_delivery.started_at
                 ORDER BY r.id ASC
                 """
             ),
@@ -2512,6 +2732,9 @@ def get_admin_robots(
                     "robot_id": f"Robot-{int(row['id']):02d}",
                     "status": display_status,
                     "raw_status": raw_status,
+                    "battery_pct": int(row["battery_pct"] or 0),
+                    "is_ready": raw_status == "charging" and int(row["battery_pct"] or 0) >= ROBOT_ASSIGNMENT_MIN_BATTERY_PCT and row["charging_started_at"] is None,
+                    "charging_started_at": str(row["charging_started_at"]) if row["charging_started_at"] else None,
                     "active_delivery_id": int(row["active_delivery_id"]) if row["active_delivery_id"] else None,
                     "active_order_count": int(row["active_order_count"] or 0),
                     "started_at": str(row["started_at"]) if row["started_at"] else None,
@@ -2759,6 +2982,7 @@ def get_order_status(
     db: Session = Depends(get_db),
 ):
     try:
+        sync_robot_state(db, order_id=order_id)
         row = db.execute(
             text(
                 """
@@ -2796,8 +3020,11 @@ def get_order_status(
 
         eta_minutes = None
         if row["delivery_status"] == "in_transit" and row["started_at"]:
-            elapsed = (datetime.datetime.now() - row["started_at"]).total_seconds() / 60
-            eta_minutes = max(int(30 - elapsed), 1)
+            progress_data = get_progress_location(
+                order_id=int(row["id"]),
+                started_at=row["started_at"],
+            )
+            eta_minutes = progress_data["eta_minutes"]
 
         return {
             "order_id": int(row["id"]),
@@ -2829,6 +3056,7 @@ def get_order_location(
     db: Session = Depends(get_db),
 ):
     try:
+        sync_robot_state(db, order_id=order_id)
         row = db.execute(
             text(
                 """
@@ -2916,6 +3144,7 @@ def update_order_status(
     db: Session = Depends(get_db),
 ):
     try:
+        sync_robot_state(db, order_id=order_id)
         order_row = db.execute(
             text(
                 """
@@ -2956,7 +3185,18 @@ def update_order_status(
 
         if new_status == "out_for_delivery":
             robot = db.execute(
-                text("SELECT id FROM robots WHERE status = 'charging' ORDER BY id ASC LIMIT 1")
+                text(
+                    """
+                    SELECT id
+                    FROM robots
+                    WHERE status = 'charging'
+                      AND battery_pct >= :min_battery
+                      AND charging_started_at IS NULL
+                    ORDER BY id ASC
+                    LIMIT 1
+                    """
+                ),
+                {"min_battery": ROBOT_ASSIGNMENT_MIN_BATTERY_PCT},
             ).fetchone()
 
             if not robot:
@@ -2978,7 +3218,14 @@ def update_order_status(
                 {"did": delivery_id, "oid": order_id},
             )
             db.execute(
-                text("UPDATE robots SET status = 'on_delivery' WHERE id = :rid"),
+                text(
+                    """
+                    UPDATE robots
+                    SET status = 'on_delivery',
+                        charging_started_at = NULL
+                    WHERE id = :rid
+                    """
+                ),
                 {"rid": robot.id},
             )
 
@@ -2990,8 +3237,19 @@ def update_order_status(
                 )
                 if order_row["robot_id"]:
                     db.execute(
-                        text("UPDATE robots SET status = 'charging' WHERE id = :rid"),
-                        {"rid": order_row["robot_id"]},
+                        text(
+                            """
+                            UPDATE robots
+                            SET status = 'charging',
+                                battery_pct = :battery_pct,
+                                charging_started_at = NOW()
+                            WHERE id = :rid
+                            """
+                        ),
+                        {
+                            "rid": order_row["robot_id"],
+                            "battery_pct": estimate_delivery_battery_pct(order_id, None),
+                        },
                     )
 
         elif new_status == "failed":
@@ -3002,8 +3260,19 @@ def update_order_status(
                 )
                 if order_row["robot_id"]:
                     db.execute(
-                        text("UPDATE robots SET status = 'charging' WHERE id = :rid"),
-                        {"rid": order_row["robot_id"]},
+                        text(
+                            """
+                            UPDATE robots
+                            SET status = 'charging',
+                                battery_pct = :battery_pct,
+                                charging_started_at = NOW()
+                            WHERE id = :rid
+                            """
+                        ),
+                        {
+                            "rid": order_row["robot_id"],
+                            "battery_pct": estimate_delivery_battery_pct(order_id, None),
+                        },
                     )
 
         db.commit()
