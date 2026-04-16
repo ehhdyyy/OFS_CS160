@@ -198,6 +198,7 @@ export default function RobotsPage() {
               <tr>
                 <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Robot ID</th>
                 <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Battery</th>
                 <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Active Delivery</th>
                 <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Orders on Route</th>
                 <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Started</th>
@@ -207,7 +208,7 @@ export default function RobotsPage() {
             <tbody className="divide-y divide-gray-200 bg-white">
               {isLoading ? (
                 <tr>
-                  <td colSpan="5" className="px-6 py-10 text-center text-sm text-gray-500">
+                  <td colSpan="6" className="px-6 py-10 text-center text-sm text-gray-500">
                     Loading robots...
                   </td>
                 </tr>
@@ -234,6 +235,29 @@ export default function RobotsPage() {
                           {status.icon}
                           {robot.status}
                         </span>
+                        <div className="mt-1 text-xs text-gray-500">
+                          {robot.status === 'Charging'
+                            ? (robot.is_ready ? 'Ready for dispatch' : 'Charging at store')
+                            : robot.status === 'Working'
+                              ? 'Delivering now'
+                              : 'Unavailable'}
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                        <div className="font-semibold text-gray-900">{robot.battery_pct}%</div>
+                        <div className="mt-2 h-2 w-28 rounded-full bg-gray-100 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${
+                              robot.battery_pct >= 80
+                                ? 'bg-green-500'
+                                : robot.battery_pct >= 40
+                                  ? 'bg-yellow-500'
+                                  : 'bg-red-500'
+                            }`}
+                            style={{ width: `${Math.max(0, Math.min(robot.battery_pct, 100))}%` }}
+                          />
+                        </div>
                       </td>
 
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -252,7 +276,7 @@ export default function RobotsPage() {
                 })
               ) : (
                 <tr>
-                  <td colSpan="5" className="px-6 py-10 text-center text-sm text-gray-500">
+                  <td colSpan="6" className="px-6 py-10 text-center text-sm text-gray-500">
                     No robots match the current filters.
                   </td>
                 </tr>

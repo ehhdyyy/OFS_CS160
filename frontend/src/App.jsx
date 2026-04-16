@@ -3,6 +3,7 @@ import LoginPage from './LoginPage';
 import LandingPage from './LandingPage';
 import AdminApp from './admin/AdminApp';
 import CustomerApp from './customer/CustomerApp';
+import ResetPasswordPage from './ResetPasswordPage';
 import { isAdminUiEnabled, getStoredEmail, persistFrontendSession } from './utils/authSession';
 
 const API_BASE = 'http://localhost:8000';
@@ -104,6 +105,10 @@ export default function App() {
 
   if (path === '/login') {
     return <LoginPage />;
+  }
+
+  if (path === '/reset-password') {
+    return <ResetPasswordPage />;
   }
 
   if (path === '/account' || path === '/customer') {

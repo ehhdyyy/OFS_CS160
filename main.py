@@ -11,6 +11,8 @@ import jwt
 import datetime
 import os
 import secrets
+import smtplib
+from email.mime.text import MIMEText
 from route_service import get_delivery_route, get_progress_location, estimate_eta
 
 load_dotenv()
@@ -40,6 +42,12 @@ DB_NAME = os.getenv("DB_NAME", "ofs_db")
 JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-env")
 JWT_EXPIRY_HOURS = 24
 
+EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_USER = os.getenv("EMAIL_USER", "")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
 # ── Database connection ─────────────────────────────────────────────────────
 DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 engine = create_engine(DATABASE_URL)
@@ -48,6 +56,10 @@ SessionLocal = sessionmaker(bind=engine)
 # ── Constants ───────────────────────────────────────────────────────────────
 FREE_DELIVERY_MAX_WEIGHT_LBS = Decimal("20.00")
 HEAVY_ORDER_DELIVERY_FEE = Decimal("10.00")
+ROBOT_ASSIGNMENT_MIN_BATTERY_PCT = 100
+ROBOT_CHARGE_RATE_PER_MINUTE = 4
+ROBOT_BATTERY_DRAIN_PER_MILE = 12
+ROBOT_MIN_POST_DELIVERY_BATTERY_PCT = 15
 SEVEN_DAY_WINDOW_START = datetime.date(2026, 3, 30)
 SEVEN_DAY_WINDOW_END = datetime.date(2026, 4, 5)
 
@@ -79,6 +91,34 @@ def hash_password(plain: str) -> str:
 
 def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
+
+
+def send_password_reset_email(to_email: str, reset_url: str) -> None:
+    if not EMAIL_USER or not EMAIL_PASSWORD:
+        print(f"[DEV] Password reset link for {to_email}: {reset_url}")
+        return
+
+    body = f"""Hi,
+
+You requested a password reset for your OFS account.
+
+Click the link below to reset your password (expires in 1 hour):
+
+{reset_url}
+
+If you did not request this, you can safely ignore this email.
+
+— The OFS Team
+"""
+    msg = MIMEText(body)
+    msg["Subject"] = "Reset your OFS password"
+    msg["From"] = EMAIL_USER
+    msg["To"] = to_email
+
+    with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
+        server.starttls()
+        server.login(EMAIL_USER, EMAIL_PASSWORD)
+        server.sendmail(EMAIL_USER, to_email, msg.as_string())
 
 
 def create_jwt(user_id: int, role: str) -> str:
@@ -144,6 +184,17 @@ def robot_label(robot_id: Optional[int]) -> str:
     return f"Robot-{int(robot_id):02d}"
 
 
+def payment_method_payload(row) -> dict:
+    return {
+        "id": int(row["id"]),
+        "cardholderName": row["cardholder_name"] or "",
+        "cardLast4": row["card_last4"] or "",
+        "cardExpiry": row["card_expiry"] or "",
+        "cardType": row["card_type"] or "",
+        "isDefault": bool(row["is_default"]),
+    }
+
+
 def derived_product_available(stock: int) -> bool:
     return stock > 0
 
@@ -197,6 +248,148 @@ def calculate_delivery_fee(total_weight: Decimal) -> Decimal:
     return Decimal("0.00") if total_weight < FREE_DELIVERY_MAX_WEIGHT_LBS else HEAVY_ORDER_DELIVERY_FEE
 
 
+def estimate_delivery_battery_pct(order_id: int, delivery_address: Optional[str]) -> int:
+    """Estimate remaining robot battery after finishing a delivery."""
+    route_data = get_delivery_route(
+        destination_address=delivery_address,
+        order_id=order_id,
+    )
+    distance = Decimal(str(route_data["distance_miles"] or 0))
+    drain = int((distance * Decimal(str(ROBOT_BATTERY_DRAIN_PER_MILE))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    return max(ROBOT_MIN_POST_DELIVERY_BATTERY_PCT, 100 - max(drain, 1))
+
+
+def sync_charging_robots(db: Session) -> None:
+    """Advance charging robots toward full battery over elapsed time."""
+    rows = db.execute(
+        text(
+            """
+            SELECT id, battery_pct, charging_started_at
+            FROM robots
+            WHERE status = 'charging'
+              AND charging_started_at IS NOT NULL
+              AND battery_pct < 100
+            """
+        )
+    ).mappings().all()
+
+    if not rows:
+        return
+
+    now = datetime.datetime.now()
+    updated = False
+
+    for row in rows:
+        elapsed_minutes = int((now - row["charging_started_at"]).total_seconds() / 60)
+        if elapsed_minutes <= 0:
+            continue
+
+        new_pct = min(100, int(row["battery_pct"] or 0) + elapsed_minutes * ROBOT_CHARGE_RATE_PER_MINUTE)
+        db.execute(
+            text(
+                """
+                UPDATE robots
+                SET battery_pct = :battery_pct,
+                    charging_started_at = :charging_started_at
+                WHERE id = :robot_id
+                """
+            ),
+            {
+                "robot_id": int(row["id"]),
+                "battery_pct": new_pct,
+                "charging_started_at": None if new_pct >= 100 else now,
+            },
+        )
+        updated = True
+
+    if updated:
+        db.commit()
+
+
+def sync_in_transit_deliveries(db: Session, order_id: Optional[int] = None) -> None:
+    """Auto-complete in-transit deliveries once their simulated ETA has elapsed."""
+    params = {}
+    order_filter = ""
+    if order_id is not None:
+        order_filter = " AND o.id = :order_id"
+        params["order_id"] = order_id
+
+    rows = db.execute(
+        text(
+            f"""
+            SELECT
+                d.id AS delivery_id,
+                d.robot_id,
+                d.started_at,
+                o.id AS order_id,
+                o.delivery_address
+            FROM deliveries d
+            JOIN orders o ON o.delivery_id = d.id
+            WHERE d.status = 'in_transit'
+            {order_filter}
+            """
+        ),
+        params,
+    ).mappings().all()
+
+    if not rows:
+        return
+
+    updated = False
+    now = datetime.datetime.now()
+
+    for row in rows:
+        if not row["started_at"]:
+            continue
+
+        route_data = get_delivery_route(
+            destination_address=row["delivery_address"],
+            order_id=int(row["order_id"]),
+        )
+        eta_minutes = max(int(route_data["eta_minutes"]), 1)
+        elapsed_minutes = (now - row["started_at"]).total_seconds() / 60
+
+        if elapsed_minutes < eta_minutes:
+            continue
+
+        db.execute(
+            text(
+                """
+                UPDATE deliveries
+                SET status = 'delivered',
+                    completed_at = COALESCE(completed_at, NOW())
+                WHERE id = :delivery_id
+                """
+            ),
+            {"delivery_id": int(row["delivery_id"])},
+        )
+        db.execute(
+            text(
+                """
+                UPDATE robots
+                SET status = 'charging',
+                    battery_pct = :battery_pct,
+                    charging_started_at = NOW()
+                WHERE id = :robot_id
+                """
+            ),
+            {
+                "robot_id": int(row["robot_id"]),
+                "battery_pct": estimate_delivery_battery_pct(int(row["order_id"]), row["delivery_address"]),
+            },
+        )
+        updated = True
+
+    if updated:
+        db.commit()
+
+
+def sync_robot_state(db: Session, order_id: Optional[int] = None) -> None:
+    """Refresh both charging progress and delivery completion before reads."""
+    sync_charging_robots(db)
+    sync_in_transit_deliveries(db, order_id=order_id)
+
+
 # ── Auth dependencies ───────────────────────────────────────────────────────
 def require_auth(
     auth_token: Optional[str] = Cookie(default=None),
@@ -236,6 +429,16 @@ def require_role(*allowed_roles: str):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    remember_me: bool = False
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
 
 
 class RegisterRequest(BaseModel):
@@ -265,6 +468,39 @@ class CheckoutRequest(BaseModel):
 
 class DeleteAccountRequest(BaseModel):
     email: EmailStr
+
+
+class UpdatePersonalInfoRequest(BaseModel):
+    name: str
+
+
+class UpdatePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class AddressRequest(BaseModel):
+    line1: Optional[str] = None
+    line2: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    country: Optional[str] = None
+
+
+class UpdatePaymentInfoRequest(BaseModel):
+    cardholder_name: Optional[str] = None
+    card_last4: Optional[str] = None
+    card_expiry: Optional[str] = None
+    card_type: Optional[str] = None
+
+
+class SavedPaymentMethodRequest(BaseModel):
+    cardholder_name: str
+    card_last4: str
+    card_expiry: Optional[str] = None
+    card_type: Optional[str] = None
+    is_default: bool = False
 
 
 class AdminProductCreateRequest(BaseModel):
@@ -490,13 +726,15 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token = create_jwt(user.id, user.role)
-    response.set_cookie(
+    cookie_kwargs = dict(
         key="auth_token",
         value=token,
         httponly=True,
-        max_age=JWT_EXPIRY_HOURS * 3600,
         samesite="lax",
     )
+    if body.remember_me:
+        cookie_kwargs["max_age"] = 30 * 24 * 3600  # 30 days
+    response.set_cookie(**cookie_kwargs)
 
     return {
         "message": "Login successful",
@@ -510,6 +748,76 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
 def logout(response: Response):
     response.delete_cookie("auth_token")
     return {"message": "Logged out"}
+
+
+@app.post("/api/auth/forgot-password")
+def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    user = db.execute(
+        text("SELECT id, email FROM users WHERE email = :email"),
+        {"email": body.email},
+    ).fetchone()
+
+    # Always return success to avoid exposing whether an email is registered
+    if not user:
+        return {"message": "If that email is registered, a reset link has been sent."}
+
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+
+    db.execute(
+        text(
+            """
+            INSERT INTO password_reset_tokens (user_id, token, expires_at)
+            VALUES (:user_id, :token, :expires_at)
+            """
+        ),
+        {"user_id": user.id, "token": token, "expires_at": expires_at},
+    )
+    db.commit()
+
+    reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
+    try:
+        send_password_reset_email(user.email, reset_url)
+    except Exception as e:
+        print(f"[ERROR] Failed to send reset email: {e}")
+
+    return {"message": "If that email is registered, a reset link has been sent."}
+
+
+@app.post("/api/auth/reset-password")
+def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    row = db.execute(
+        text(
+            """
+            SELECT id, user_id, expires_at, used
+            FROM password_reset_tokens
+            WHERE token = :token
+            """
+        ),
+        {"token": body.token},
+    ).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+    if row.used:
+        raise HTTPException(status_code=400, detail="This reset link has already been used")
+    if datetime.datetime.utcnow() > row.expires_at:
+        raise HTTPException(status_code=400, detail="This reset link has expired")
+
+    db.execute(
+        text("UPDATE users SET password_hash = :hash WHERE id = :uid"),
+        {"hash": hash_password(body.new_password), "uid": row.user_id},
+    )
+    db.execute(
+        text("UPDATE password_reset_tokens SET used = TRUE WHERE id = :id"),
+        {"id": row.id},
+    )
+    db.commit()
+
+    return {"message": "Password updated successfully"}
 
 
 @app.get("/api/auth/me")
@@ -595,6 +903,373 @@ def delete_account(
 
     response.delete_cookie("auth_token")
     return {"message": "Account deleted"}
+
+
+# ── Profile ─────────────────────────────────────────────────────────────────
+
+@app.get("/api/profile")
+def get_profile(current_user: dict = Depends(require_auth), db: Session = Depends(get_db)):
+    user = db.execute(
+        text(
+            """
+            SELECT
+                name, email,
+                billing_address_line1, billing_address_line2,
+                billing_city, billing_state, billing_zip, billing_country,
+                shipping_address_line1, shipping_address_line2,
+                shipping_city, shipping_state, shipping_zip, shipping_country
+            FROM users WHERE id = :id
+            """
+        ),
+        {"id": current_user["userId"]},
+    ).fetchone()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    payment_methods = db.execute(
+        text(
+            """
+            SELECT id, cardholder_name, card_last4, card_expiry, card_type, is_default
+            FROM payment_methods
+            WHERE user_id = :id
+            ORDER BY is_default DESC, created_at ASC, id ASC
+            """
+        ),
+        {"id": current_user["userId"]},
+    ).mappings().all()
+
+    return {
+        "name": user.name,
+        "email": user.email,
+        "billingAddress": {
+            "line1": user.billing_address_line1 or "",
+            "line2": user.billing_address_line2 or "",
+            "city": user.billing_city or "",
+            "state": user.billing_state or "",
+            "zipCode": user.billing_zip or "",
+            "country": user.billing_country or "",
+        },
+        "shippingAddress": {
+            "line1": user.shipping_address_line1 or "",
+            "line2": user.shipping_address_line2 or "",
+            "city": user.shipping_city or "",
+            "state": user.shipping_state or "",
+            "zipCode": user.shipping_zip or "",
+            "country": user.shipping_country or "",
+        },
+        "paymentMethods": [payment_method_payload(row) for row in payment_methods],
+    }
+
+
+@app.put("/api/profile/personal-info")
+def update_personal_info(
+    body: UpdatePersonalInfoRequest,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    name = body.name.strip()
+
+    if not name:
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+
+    db.execute(
+        text("UPDATE users SET name = :name WHERE id = :id"),
+        {"name": name, "id": current_user["userId"]},
+    )
+    db.commit()
+    return {"message": "Personal info updated", "name": name, "email": current_user["email"]}
+
+
+@app.put("/api/profile/password")
+def update_password(
+    body: UpdatePasswordRequest,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    row = db.execute(
+        text("SELECT password_hash FROM users WHERE id = :id"),
+        {"id": current_user["userId"]},
+    ).fetchone()
+
+    if not row or not verify_password(body.current_password, row.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+
+    db.execute(
+        text("UPDATE users SET password_hash = :hash WHERE id = :id"),
+        {"hash": hash_password(body.new_password), "id": current_user["userId"]},
+    )
+    db.commit()
+    return {"message": "Password updated"}
+
+
+@app.put("/api/profile/billing-address")
+def update_billing_address(
+    body: AddressRequest,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    db.execute(
+        text(
+            """
+            UPDATE users SET
+                billing_address_line1 = :line1,
+                billing_address_line2 = :line2,
+                billing_city  = :city,
+                billing_state = :state,
+                billing_zip   = :zip_code,
+                billing_country = :country
+            WHERE id = :id
+            """
+        ),
+        {
+            "line1": body.line1 or None,
+            "line2": body.line2 or None,
+            "city": body.city or None,
+            "state": body.state or None,
+            "zip_code": body.zip_code or None,
+            "country": body.country or None,
+            "id": current_user["userId"],
+        },
+    )
+    db.commit()
+    return {"message": "Billing address updated"}
+
+
+@app.put("/api/profile/shipping-address")
+def update_shipping_address(
+    body: AddressRequest,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    db.execute(
+        text(
+            """
+            UPDATE users SET
+                shipping_address_line1 = :line1,
+                shipping_address_line2 = :line2,
+                shipping_city  = :city,
+                shipping_state = :state,
+                shipping_zip   = :zip_code,
+                shipping_country = :country
+            WHERE id = :id
+            """
+        ),
+        {
+            "line1": body.line1 or None,
+            "line2": body.line2 or None,
+            "city": body.city or None,
+            "state": body.state or None,
+            "zip_code": body.zip_code or None,
+            "country": body.country or None,
+            "id": current_user["userId"],
+        },
+    )
+    db.commit()
+    return {"message": "Shipping address updated"}
+
+
+@app.post("/api/profile/payment-methods")
+def create_payment_method(
+    body: SavedPaymentMethodRequest,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    last4 = (body.card_last4 or "").strip()
+    if not body.cardholder_name.strip():
+        raise HTTPException(status_code=400, detail="Cardholder name is required")
+    if not last4 or not last4.isdigit() or len(last4) != 4:
+        raise HTTPException(status_code=400, detail="card_last4 must be exactly 4 digits")
+
+    saved_count = db.execute(
+        text("SELECT COUNT(*) FROM payment_methods WHERE user_id = :id"),
+        {"id": current_user["userId"]},
+    ).scalar() or 0
+    if int(saved_count) >= 3:
+        raise HTTPException(status_code=400, detail="You can save up to 3 payment methods")
+
+    if body.is_default:
+        db.execute(
+            text("UPDATE payment_methods SET is_default = FALSE WHERE user_id = :id"),
+            {"id": current_user["userId"]},
+        )
+    elif saved_count == 0:
+        body = SavedPaymentMethodRequest(
+            cardholder_name=body.cardholder_name,
+            card_last4=body.card_last4,
+            card_expiry=body.card_expiry,
+            card_type=body.card_type,
+            is_default=True,
+        )
+
+    result = db.execute(
+        text(
+            """
+            INSERT INTO payment_methods (
+                user_id, cardholder_name, card_last4, card_expiry, card_type, is_default
+            ) VALUES (
+                :user_id, :cardholder_name, :card_last4, :card_expiry, :card_type, :is_default
+            )
+            """
+        ),
+        {
+            "user_id": current_user["userId"],
+            "cardholder_name": body.cardholder_name.strip(),
+            "card_last4": last4,
+            "card_expiry": (body.card_expiry or "").strip() or None,
+            "card_type": (body.card_type or "").strip() or None,
+            "is_default": bool(body.is_default),
+        },
+    )
+    db.commit()
+    row = db.execute(
+        text(
+            """
+            SELECT id, cardholder_name, card_last4, card_expiry, card_type, is_default
+            FROM payment_methods
+            WHERE id = :id
+            """
+        ),
+        {"id": result.lastrowid},
+    ).mappings().fetchone()
+    return {"message": "Payment method saved", "paymentMethod": payment_method_payload(row)}
+
+
+@app.put("/api/profile/payment-methods/{payment_method_id}")
+def update_payment_method(
+    payment_method_id: int,
+    body: SavedPaymentMethodRequest,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    last4 = (body.card_last4 or "").strip()
+    if not body.cardholder_name.strip():
+        raise HTTPException(status_code=400, detail="Cardholder name is required")
+    if not last4 or not last4.isdigit() or len(last4) != 4:
+        raise HTTPException(status_code=400, detail="card_last4 must be exactly 4 digits")
+
+    exists = db.execute(
+        text("SELECT id FROM payment_methods WHERE id = :id AND user_id = :user_id"),
+        {"id": payment_method_id, "user_id": current_user["userId"]},
+    ).fetchone()
+    if not exists:
+        raise HTTPException(status_code=404, detail="Payment method not found")
+
+    if body.is_default:
+        db.execute(
+            text("UPDATE payment_methods SET is_default = FALSE WHERE user_id = :id"),
+            {"id": current_user["userId"]},
+        )
+
+    db.execute(
+        text(
+            """
+            UPDATE payment_methods SET
+                cardholder_name = :cardholder_name,
+                card_last4 = :card_last4,
+                card_expiry = :card_expiry,
+                card_type = :card_type,
+                is_default = :is_default
+            WHERE id = :id AND user_id = :user_id
+            """
+        ),
+        {
+            "cardholder_name": body.cardholder_name.strip(),
+            "card_last4": last4,
+            "card_expiry": (body.card_expiry or "").strip() or None,
+            "card_type": (body.card_type or "").strip() or None,
+            "is_default": bool(body.is_default),
+            "id": payment_method_id,
+            "user_id": current_user["userId"],
+        },
+    )
+    db.commit()
+    row = db.execute(
+        text(
+            """
+            SELECT id, cardholder_name, card_last4, card_expiry, card_type, is_default
+            FROM payment_methods
+            WHERE id = :id
+            """
+        ),
+        {"id": payment_method_id},
+    ).mappings().fetchone()
+    return {"message": "Payment method updated", "paymentMethod": payment_method_payload(row)}
+
+
+@app.patch("/api/profile/payment-methods/{payment_method_id}/default")
+def set_default_payment_method(
+    payment_method_id: int,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    exists = db.execute(
+        text("SELECT id FROM payment_methods WHERE id = :id AND user_id = :user_id"),
+        {"id": payment_method_id, "user_id": current_user["userId"]},
+    ).fetchone()
+    if not exists:
+        raise HTTPException(status_code=404, detail="Payment method not found")
+
+    db.execute(
+        text("UPDATE payment_methods SET is_default = FALSE WHERE user_id = :user_id"),
+        {"user_id": current_user["userId"]},
+    )
+    db.execute(
+        text("UPDATE payment_methods SET is_default = TRUE WHERE id = :id AND user_id = :user_id"),
+        {"id": payment_method_id, "user_id": current_user["userId"]},
+    )
+    db.commit()
+    return {"message": "Default payment method updated"}
+
+
+@app.delete("/api/profile/payment-methods/{payment_method_id}")
+def delete_payment_method(
+    payment_method_id: int,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    row = db.execute(
+        text(
+            """
+            SELECT id, is_default
+            FROM payment_methods
+            WHERE id = :id AND user_id = :user_id
+            """
+        ),
+        {"id": payment_method_id, "user_id": current_user["userId"]},
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Payment method not found")
+
+    db.execute(
+        text("DELETE FROM payment_methods WHERE id = :id AND user_id = :user_id"),
+        {"id": payment_method_id, "user_id": current_user["userId"]},
+    )
+
+    if bool(row.is_default):
+        fallback = db.execute(
+            text(
+                """
+                SELECT id
+                FROM payment_methods
+                WHERE user_id = :user_id
+                ORDER BY created_at ASC, id ASC
+                LIMIT 1
+                """
+            ),
+            {"user_id": current_user["userId"]},
+        ).fetchone()
+        if fallback:
+            db.execute(
+                text("UPDATE payment_methods SET is_default = TRUE WHERE id = :id"),
+                {"id": fallback.id},
+            )
+
+    db.commit()
+    return {"message": "Payment method deleted"}
 
 
 # ── Customer product browsing ───────────────────────────────────────────────
@@ -856,6 +1531,7 @@ def checkout_cart(
     db: Session = Depends(get_db),
 ):
     try:
+        sync_robot_state(db)
         cart_id, cart_rows = fetch_cart_items(db, current_user["userId"])
         if not cart_rows:
             raise HTTPException(status_code=400, detail="Cart is empty")
@@ -897,18 +1573,61 @@ def checkout_cart(
         delivery_fee = calculate_delivery_fee(total_weight)
         total_price = (subtotal + delivery_fee).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
+        assigned_delivery_id = None
+        assigned_robot_id = None
+
+        available_robot = db.execute(
+            text(
+                """
+                SELECT id
+                FROM robots
+                WHERE status = 'charging'
+                  AND battery_pct >= :min_battery
+                  AND charging_started_at IS NULL
+                ORDER BY id ASC
+                LIMIT 1
+                """
+            ),
+            {"min_battery": ROBOT_ASSIGNMENT_MIN_BATTERY_PCT},
+        ).fetchone()
+
+        if available_robot:
+            delivery_result = db.execute(
+                text(
+                    """
+                    INSERT INTO deliveries (robot_id, status, started_at)
+                    VALUES (:robot_id, 'in_transit', NOW())
+                    """
+                ),
+                {"robot_id": available_robot.id},
+            )
+            assigned_delivery_id = int(delivery_result.lastrowid)
+            assigned_robot_id = int(available_robot.id)
+            db.execute(
+                text(
+                    """
+                    UPDATE robots
+                    SET status = 'on_delivery',
+                        charging_started_at = NULL
+                    WHERE id = :robot_id
+                    """
+                ),
+                {"robot_id": assigned_robot_id},
+            )
+
         order_result = db.execute(
             text(
                 """
                 INSERT INTO orders (
                     user_id, delivery_id, delivery_address, delivery_fee, total_price, total_weight, payment_status, paid_at, created_at
                 ) VALUES (
-                    :user_id, NULL, :delivery_address, :delivery_fee, :total_price, :total_weight, 'paid', NOW(), NOW()
+                    :user_id, :delivery_id, :delivery_address, :delivery_fee, :total_price, :total_weight, 'paid', NOW(), NOW()
                 )
                 """
             ),
             {
                 "user_id": current_user["userId"],
+                "delivery_id": assigned_delivery_id,
                 "delivery_address": delivery_address,
                 "delivery_fee": float(delivery_fee),
                 "total_price": float(total_price),
@@ -950,9 +1669,15 @@ def checkout_cart(
         db.execute(text("DELETE FROM cart_items WHERE cart_id = :cart_id"), {"cart_id": cart_id})
         db.commit()
 
+        order_status = "out_for_delivery" if assigned_delivery_id else "processing"
+
         return {
             "message": "Checkout successful",
             "order_id": order_id,
+            "delivery_id": assigned_delivery_id,
+            "status": order_status,
+            "status_label": legacy_status_label(order_status),
+            "robot_label": robot_label(assigned_robot_id),
             "payment_status": "paid",
             "delivery_fee": float(delivery_fee),
             "total_weight_lbs": float(total_weight.quantize(Decimal("0.01"))),
@@ -973,6 +1698,7 @@ def get_my_orders(
     db: Session = Depends(get_db),
 ):
     try:
+        sync_robot_state(db)
         order_rows = db.execute(
             text(
                 """
@@ -1073,12 +1799,22 @@ def get_admin_dashboard(
     db: Session = Depends(get_db),
 ):
     try:
+        sync_robot_state(db)
         total_orders = db.execute(text("SELECT COUNT(*) FROM orders")).scalar() or 0
         active_deliveries = db.execute(
             text("SELECT COUNT(*) FROM deliveries WHERE status = 'in_transit'")
         ).scalar() or 0
         available_robots = db.execute(
-            text("SELECT COUNT(*) FROM robots WHERE status = 'charging'")
+            text(
+                """
+                SELECT COUNT(*)
+                FROM robots
+                WHERE status = 'charging'
+                  AND battery_pct >= :min_battery
+                  AND charging_started_at IS NULL
+                """
+            ),
+            {"min_battery": ROBOT_ASSIGNMENT_MIN_BATTERY_PCT},
         ).scalar() or 0
         low_stock_items = db.execute(
             text("SELECT COUNT(*) FROM inventory WHERE quantity <= low_stock_threshold")
@@ -1396,6 +2132,7 @@ def get_admin_orders(
     db: Session = Depends(get_db),
 ):
     try:
+        sync_robot_state(db)
         conditions = []
         params = {}
 
@@ -1459,7 +2196,15 @@ def get_admin_orders(
         ).mappings().all()
 
         active_robots = db.execute(
-            text("SELECT COUNT(*) FROM robots WHERE status IN ('charging', 'on_delivery')")
+            text(
+                """
+                SELECT COUNT(*)
+                FROM robots
+                WHERE status = 'on_delivery'
+                   OR (status = 'charging' AND battery_pct >= :min_battery AND charging_started_at IS NULL)
+                """
+            ),
+            {"min_battery": ROBOT_ASSIGNMENT_MIN_BATTERY_PCT},
         ).scalar() or 0
         pending_deliveries = db.execute(text("SELECT COUNT(*) FROM orders WHERE delivery_id IS NULL")).scalar() or 0
 
@@ -1847,6 +2592,7 @@ def get_admin_deliveries(
     db: Session = Depends(get_db),
 ):
     try:
+        sync_robot_state(db)
         conditions = ["DATE(COALESCE(d.started_at, o.created_at)) >= DATE_SUB(CURDATE(), INTERVAL :days_minus_one DAY)"]
         params = {"days_minus_one": max(days - 1, 0)}
 
@@ -1954,6 +2700,7 @@ def get_admin_robots(
     db: Session = Depends(get_db),
 ):
     try:
+        sync_robot_state(db)
         conditions = []
         params = {}
 
@@ -1977,6 +2724,8 @@ def get_admin_robots(
                 SELECT
                     r.id,
                     r.status,
+                    r.battery_pct,
+                    r.charging_started_at,
                     active_delivery.id AS active_delivery_id,
                     active_delivery.started_at,
                     COUNT(active_orders.id) AS active_order_count
@@ -1985,7 +2734,7 @@ def get_admin_robots(
                     ON active_delivery.robot_id = r.id AND active_delivery.status = 'in_transit'
                 LEFT JOIN orders active_orders ON active_orders.delivery_id = active_delivery.id
                 {where_clause}
-                GROUP BY r.id, r.status, active_delivery.id, active_delivery.started_at
+                GROUP BY r.id, r.status, r.battery_pct, r.charging_started_at, active_delivery.id, active_delivery.started_at
                 ORDER BY r.id ASC
                 """
             ),
@@ -2002,6 +2751,9 @@ def get_admin_robots(
                     "robot_id": f"Robot-{int(row['id']):02d}",
                     "status": display_status,
                     "raw_status": raw_status,
+                    "battery_pct": int(row["battery_pct"] or 0),
+                    "is_ready": raw_status == "charging" and int(row["battery_pct"] or 0) >= ROBOT_ASSIGNMENT_MIN_BATTERY_PCT and row["charging_started_at"] is None,
+                    "charging_started_at": str(row["charging_started_at"]) if row["charging_started_at"] else None,
                     "active_delivery_id": int(row["active_delivery_id"]) if row["active_delivery_id"] else None,
                     "active_order_count": int(row["active_order_count"] or 0),
                     "started_at": str(row["started_at"]) if row["started_at"] else None,
@@ -2249,6 +3001,7 @@ def get_order_status(
     db: Session = Depends(get_db),
 ):
     try:
+        sync_robot_state(db, order_id=order_id)
         row = db.execute(
             text(
                 """
@@ -2286,8 +3039,11 @@ def get_order_status(
 
         eta_minutes = None
         if row["delivery_status"] == "in_transit" and row["started_at"]:
-            elapsed = (datetime.datetime.now() - row["started_at"]).total_seconds() / 60
-            eta_minutes = max(int(30 - elapsed), 1)
+            progress_data = get_progress_location(
+                order_id=int(row["id"]),
+                started_at=row["started_at"],
+            )
+            eta_minutes = progress_data["eta_minutes"]
 
         return {
             "order_id": int(row["id"]),
@@ -2319,6 +3075,7 @@ def get_order_location(
     db: Session = Depends(get_db),
 ):
     try:
+        sync_robot_state(db, order_id=order_id)
         row = db.execute(
             text(
                 """
@@ -2426,6 +3183,7 @@ def update_order_status(
     db: Session = Depends(get_db),
 ):
     try:
+        sync_robot_state(db, order_id=order_id)
         order_row = db.execute(
             text(
                 """
@@ -2466,7 +3224,18 @@ def update_order_status(
 
         if new_status == "out_for_delivery":
             robot = db.execute(
-                text("SELECT id FROM robots WHERE status = 'charging' ORDER BY id ASC LIMIT 1")
+                text(
+                    """
+                    SELECT id
+                    FROM robots
+                    WHERE status = 'charging'
+                      AND battery_pct >= :min_battery
+                      AND charging_started_at IS NULL
+                    ORDER BY id ASC
+                    LIMIT 1
+                    """
+                ),
+                {"min_battery": ROBOT_ASSIGNMENT_MIN_BATTERY_PCT},
             ).fetchone()
 
             if not robot:
@@ -2488,7 +3257,14 @@ def update_order_status(
                 {"did": delivery_id, "oid": order_id},
             )
             db.execute(
-                text("UPDATE robots SET status = 'on_delivery' WHERE id = :rid"),
+                text(
+                    """
+                    UPDATE robots
+                    SET status = 'on_delivery',
+                        charging_started_at = NULL
+                    WHERE id = :rid
+                    """
+                ),
                 {"rid": robot.id},
             )
 
@@ -2500,8 +3276,19 @@ def update_order_status(
                 )
                 if order_row["robot_id"]:
                     db.execute(
-                        text("UPDATE robots SET status = 'charging' WHERE id = :rid"),
-                        {"rid": order_row["robot_id"]},
+                        text(
+                            """
+                            UPDATE robots
+                            SET status = 'charging',
+                                battery_pct = :battery_pct,
+                                charging_started_at = NOW()
+                            WHERE id = :rid
+                            """
+                        ),
+                        {
+                            "rid": order_row["robot_id"],
+                            "battery_pct": estimate_delivery_battery_pct(order_id, None),
+                        },
                     )
 
         elif new_status == "failed":
@@ -2512,8 +3299,19 @@ def update_order_status(
                 )
                 if order_row["robot_id"]:
                     db.execute(
-                        text("UPDATE robots SET status = 'charging' WHERE id = :rid"),
-                        {"rid": order_row["robot_id"]},
+                        text(
+                            """
+                            UPDATE robots
+                            SET status = 'charging',
+                                battery_pct = :battery_pct,
+                                charging_started_at = NOW()
+                            WHERE id = :rid
+                            """
+                        ),
+                        {
+                            "rid": order_row["robot_id"],
+                            "battery_pct": estimate_delivery_battery_pct(order_id, None),
+                        },
                     )
 
         db.commit()
