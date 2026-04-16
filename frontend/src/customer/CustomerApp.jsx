@@ -2,17 +2,15 @@ import { useEffect, useState } from 'react';
 import './styles/customer.css';
 import BrowsingPage from './pages/BrowsingPage';
 import ProductDetailPage from './pages/ProductDetailPage';
-import OrderConfirmationPage from './pages/OrderConfirmationPage';
 import OrderHistoryPage from './pages/OrderHistoryPage';
+import OrderTrackingPage from './pages/OrderTrackingPage';
 import ProfilePage from './pages/ProfilePage';
 import { clearFrontendSession } from '../utils/authSession';
 
 const API_BASE = 'http://localhost:8000';
 
 export default function CustomerApp() {
-
   const [cart, setCart] = useState([]);
-  const [confirmedOrder, setConfirmedOrder] = useState(null);
 
   useEffect(() => {
     loadCart();
@@ -29,12 +27,18 @@ export default function CustomerApp() {
         method: 'GET',
         credentials: 'include',
       });
+
       const data = await response.json();
+
       if (response.status === 401) {
         handleUnauthorized();
         return;
       }
-      if (!response.ok) throw new Error(data.message || `Failed to load cart (${response.status})`);
+
+      if (!response.ok) {
+        throw new Error(data.message || `Failed to load cart (${response.status})`);
+      }
+
       setCart(Array.isArray(data.items) ? data.items : []);
     } catch (error) {
       console.error('Error loading cart:', error);
@@ -44,21 +48,29 @@ export default function CustomerApp() {
 
   async function addToCart(product, quantityToAdd = 1) {
     try {
-      if (!product || product.stock <= 0 || quantityToAdd <= 0) return;
+      if (!product || product.stock <= 0 || quantityToAdd <= 0) return false;
 
       const response = await fetch(`${API_BASE}/api/cart/items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ product_id: product.id, quantity: quantityToAdd }),
+        body: JSON.stringify({
+          product_id: product.id,
+          quantity: quantityToAdd,
+        }),
       });
 
       const data = await response.json();
+
       if (response.status === 401) {
         handleUnauthorized();
         return false;
       }
-      if (!response.ok) throw new Error(data.detail || `Failed to add item (${response.status})`);
+
+      if (!response.ok) {
+        throw new Error(data.detail || `Failed to add item (${response.status})`);
+      }
+
       setCart(Array.isArray(data.items) ? data.items : []);
       return true;
     } catch (error) {
@@ -79,12 +91,18 @@ export default function CustomerApp() {
           method: 'DELETE',
           credentials: 'include',
         });
+
         const data = await response.json();
+
         if (response.status === 401) {
           handleUnauthorized();
           return;
         }
-        if (!response.ok) throw new Error(data.detail || `Failed to remove item (${response.status})`);
+
+        if (!response.ok) {
+          throw new Error(data.detail || `Failed to remove item (${response.status})`);
+        }
+
         setCart(Array.isArray(data.items) ? data.items : []);
         return;
       }
@@ -95,12 +113,18 @@ export default function CustomerApp() {
         credentials: 'include',
         body: JSON.stringify({ quantity: newQty }),
       });
+
       const data = await response.json();
+
       if (response.status === 401) {
         handleUnauthorized();
         return;
       }
-      if (!response.ok) throw new Error(data.detail || `Failed to update item (${response.status})`);
+
+      if (!response.ok) {
+        throw new Error(data.detail || `Failed to update item (${response.status})`);
+      }
+
       setCart(Array.isArray(data.items) ? data.items : []);
     } catch (error) {
       console.error('Failed to change quantity:', error);
@@ -112,28 +136,38 @@ export default function CustomerApp() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ delivery_address: deliveryAddress ?? null }),
+      body: JSON.stringify({
+        delivery_address: deliveryAddress ?? null,
+      }),
     });
 
     const data = await response.json();
+
     if (response.status === 401) {
       handleUnauthorized();
       throw new Error('Please log in to complete your purchase.');
     }
+
     if (!response.ok) {
       const msg =
-        response.status === 400 ? data.detail :
-        response.status === 401 ? 'Please log in to complete your purchase.' :
-        'Something went wrong. Please try again.';
+        response.status === 400
+          ? data.detail
+          : response.status === 401
+            ? 'Please log in to complete your purchase.'
+            : 'Something went wrong. Please try again.';
+
       throw new Error(msg);
     }
 
-    setConfirmedOrder({ ...data, items: cart });
     setCart([]);
+    window.location.href = `/orders/${data.order_id}`;
   }
 
-  // Profile page
-  if (window.location.pathname === '/profile') {
+  const path = window.location.pathname;
+  const productMatch = path.match(/^\/product\/(\d+)$/);
+  const orderMatch = path.match(/^\/orders\/(\d+)$/);
+
+  if (path === '/profile') {
     return (
       <div className="customer-app">
         <ProfilePage />
@@ -141,8 +175,7 @@ export default function CustomerApp() {
     );
   }
 
-  // Order history page
-  if (window.location.pathname === '/orders') {
+  if (path === '/orders') {
     return (
       <div className="customer-app">
         <OrderHistoryPage onBack={() => { window.location.href = '/home'; }} />
@@ -150,28 +183,25 @@ export default function CustomerApp() {
     );
   }
 
-  // Product detail page
-  const match = window.location.pathname.match(/^\/product\/(\d+)$/);
-  if (match) {
+  if (orderMatch) {
     return (
       <div className="customer-app">
-        <ProductDetailPage
-          productId={Number(match[1])}
-          cart={cart}
-          addToCart={addToCart}
-          changeQuantity={changeQuantity}
+        <OrderTrackingPage
+          orderId={Number(orderMatch[1])}
+          onBack={() => { window.location.href = '/orders'; }}
         />
       </div>
     );
   }
 
-  // Order confirmation after successful checkout
-  if (confirmedOrder) {
+  if (productMatch) {
     return (
       <div className="customer-app">
-        <OrderConfirmationPage
-          order={confirmedOrder}
-          onContinueShopping={() => setConfirmedOrder(null)}
+        <ProductDetailPage
+          productId={Number(productMatch[1])}
+          cart={cart}
+          addToCart={addToCart}
+          changeQuantity={changeQuantity}
         />
       </div>
     );

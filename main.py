@@ -527,7 +527,26 @@ class AdminProductUpdateRequest(BaseModel):
     low_stock_threshold: int = Field(default=10, ge=0)
     image_url: Optional[str] = None
     is_organic: bool = False
+    
+class OrderLocationResponse(BaseModel):
+    order_id: int
+    delivery_status: Optional[str] = None
+    robot_label: str
+    progress: float
+    eta_minutes: Optional[int] = None
 
+    latitude: float
+    longitude: float
+    destination_latitude: float
+    destination_longitude: float
+
+    current_location: dict
+    store_location: dict
+    destination_location: dict
+    route: list
+    distance_miles: Optional[float] = None
+    delivery_address: str
+    route_source: Optional[str] = None
 
 # ── Query helpers ───────────────────────────────────────────────────────────
 def get_or_create_cart_id(db: Session, user_id: int) -> int:
@@ -3049,7 +3068,7 @@ def get_order_status(
         raise HTTPException(status_code=500, detail=f"Failed to load order status: {str(e)}")
 
 
-@app.get("/api/orders/{order_id}/location")
+@app.get("/api/orders/{order_id}/location", response_model=OrderLocationResponse)
 def get_order_location(
     order_id: int,
     current_user: dict = Depends(require_auth),
@@ -3084,7 +3103,6 @@ def get_order_location(
         if not is_admin and int(row["user_id"]) != current_user["userId"]:
             raise HTTPException(status_code=403, detail="You can only view your own orders")
 
-        # Use route service for proper route + ETA calculation
         route_data = get_delivery_route(
             destination_address=row["delivery_address"],
             order_id=int(row["id"]),
@@ -3105,22 +3123,43 @@ def get_order_location(
             progress_data = {
                 "current_location": route_data["origin"],
                 "progress": 0.0,
-                "eta_minutes": route_data["eta_minutes"],
+                "eta_minutes": route_data.get("eta_minutes"),
             }
+
+        current_location = progress_data.get("current_location") or {}
+        destination_location = route_data.get("destination") or {}
+        store_location = route_data.get("origin") or {}
+
+        current_lat = current_location.get("lat")
+        current_lng = current_location.get("lng")
+        destination_lat = destination_location.get("lat")
+        destination_lng = destination_location.get("lng")
+
+        if current_lat is None or current_lng is None:
+            raise HTTPException(status_code=500, detail="Route service did not return current coordinates")
+
+        if destination_lat is None or destination_lng is None:
+            raise HTTPException(status_code=500, detail="Route service did not return destination coordinates")
 
         return {
             "order_id": int(row["id"]),
             "delivery_status": row["delivery_status"],
             "robot_label": robot_label(row["robot_id"]),
-            "progress": progress_data["progress"],
-            "eta_minutes": progress_data["eta_minutes"],
-            "current_location": progress_data["current_location"],
-            "store_location": route_data["origin"],
-            "destination_location": route_data["destination"],
-            "route": route_data["route"],
-            "distance_miles": route_data["distance_miles"],
+            "progress": float(progress_data.get("progress", 0.0)),
+            "eta_minutes": progress_data.get("eta_minutes"),
+
+            "latitude": float(current_lat),
+            "longitude": float(current_lng),
+            "destination_latitude": float(destination_lat),
+            "destination_longitude": float(destination_lng),
+
+            "current_location": current_location,
+            "store_location": store_location,
+            "destination_location": destination_location,
+            "route": route_data.get("route", []),
+            "distance_miles": float(route_data["distance_miles"]) if route_data.get("distance_miles") is not None else None,
             "delivery_address": row["delivery_address"],
-            "route_source": route_data["source"],
+            "route_source": route_data.get("source"),
         }
     except HTTPException:
         raise

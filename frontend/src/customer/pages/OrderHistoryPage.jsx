@@ -63,6 +63,10 @@ export default function OrderHistoryPage({ onBack }) {
     setExpandedOrderId((prev) => (prev === orderId ? null : orderId));
   }
 
+  function goToTracking(orderId) {
+    window.location.href = `/orders/${orderId}`;
+  }
+
   return (
     <div className="order-history-page">
       <div className="order-history-header">
@@ -140,6 +144,19 @@ export default function OrderHistoryPage({ onBack }) {
                         <span className="meta-label">Weight</span>
                         <span className="meta-value">{order.total_weight_lbs} lbs</span>
                       </div>
+                    </div>
+
+                    <div style={{ marginBottom: '16px' }}>
+                      <button
+                        type="button"
+                        className="order-history-track-btn"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          goToTracking(order.id);
+                        }}
+                      >
+                        Track order
+                      </button>
                     </div>
 
                     <div className="order-items-table">
