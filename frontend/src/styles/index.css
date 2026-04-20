@@ -1,0 +1,96 @@
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+
+*, *::before, *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+
+:root {
+  --green: #22c55e;
+  --green-dark: #16a34a;
+  --green-soft: #dcfce7;
+  --accent: #f59e0b;
+  --text-dark: #111827;
+  --text-mid: #4b5563;
+  --text-light: #9ca3af;
+  --border: rgba(17, 24, 39, 0.08);
+  --bg: linear-gradient(135deg, #f7faf7 0%, #eef8f0 45%, #f5f7fb 100%);
+  --white: #ffffff;
+  --shadow-lg: 0 20px 60px rgba(17, 24, 39, 0.12);
+  --shadow-md: 0 10px 30px rgba(17, 24, 39, 0.08);
+  --shadow-sm: 0 4px 14px rgba(17, 24, 39, 0.06);
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text-dark);
+  min-height: 100vh;
+}
+
+/* NAVBAR */
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(14px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2.5rem;
+  height: 74px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+}
+
+.navbar-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+}
+
+.logo-icon {
+  width: 42px;
+  height: 42px;
+  background: linear-gradient(135deg, var(--green), var(--green-dark));
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 20px rgba(34, 197, 94, 0.28);
+  font-size: 1.1rem;
+}
+
+.logo-text {
+  font-size: 1.28rem;
+  font-weight: 800;
+  color: var(--text-dark);
+  letter-spacing: -0.02em;
+}
+
+.navbar-links {
+  display: flex;
+  gap: 2rem;
+  list-style: none;
+}
+
+.navbar-links a {
+  text-decoration: none;
+  color: var(--text-mid);
+  font-size: 0.95rem;
+  font-weight: 500;
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.navbar-links a:hover {
+  color: var(--text-dark);
+  transform: translateY(-1px);
+  border-color:var(--green-dark);
+  border-radius: 2;
+}

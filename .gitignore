@@ -1,0 +1,13 @@
+node_modules/
+__pycache__/
+*.pyc
+.env
+frontend/node_modules/
+frontend/dist/
+venv/
+.pytest_cache/
+.DS_Store
+
+# Non-project files
+instructions/
+mockups/

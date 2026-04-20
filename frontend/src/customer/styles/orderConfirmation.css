@@ -1,0 +1,122 @@
+.confirmation-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg, #f8fafc);
+}
+
+.confirmation-card {
+  background: #fff;
+  border-radius: 24px;
+  padding: 48px 40px;
+  max-width: 520px;
+  width: 100%;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.1);
+  text-align: center;
+}
+
+.confirmation-icon {
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(135deg, var(--green, #16a34a), var(--green-dark, #15803d));
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0 auto 20px;
+}
+
+.confirmation-card h1 {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 8px;
+}
+
+.confirmation-subtitle {
+  font-size: 0.95rem;
+  color: #64748b;
+  margin: 0 0 24px;
+  line-height: 1.5;
+}
+
+.confirmation-order-id {
+  display: inline-block;
+  background: #f0fdf4;
+  border: 1.5px solid #bbf7d0;
+  color: #166534;
+  border-radius: 10px;
+  padding: 8px 20px;
+  font-size: 0.95rem;
+  margin-bottom: 28px;
+}
+
+.confirmation-items {
+  text-align: left;
+  margin-bottom: 16px;
+}
+
+.confirmation-items h3 {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  margin: 0 0 10px;
+}
+
+.confirmation-item-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  color: #334155;
+  padding: 5px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.confirmation-totals {
+  text-align: left;
+  margin-bottom: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.confirmation-total-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  color: #475569;
+}
+
+.confirmation-total-final {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #0f172a;
+  border-top: 1.5px solid #e2e8f0;
+  padding-top: 8px;
+  margin-top: 4px;
+}
+
+.confirmation-continue-btn {
+  width: 100%;
+  padding: 13px;
+  border: none;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--green, #16a34a), var(--green-dark, #15803d));
+  color: white;
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.confirmation-continue-btn:hover {
+  opacity: 0.92;
+}
