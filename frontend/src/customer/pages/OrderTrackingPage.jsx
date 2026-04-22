@@ -157,11 +157,13 @@ export default function OrderTrackingPage({ orderId, onBack }) {
     if (location?.latitude != null && location?.longitude != null) {
       return [Number(location.latitude), Number(location.longitude)];
     }
+
     if (location?.current_location?.lat != null && location?.current_location?.lng != null) {
       return [Number(location.current_location.lat), Number(location.current_location.lng)];
     }
-    return destination;
-  }, [location, destination]);
+    return [37.3330375564865, -121.89059343162731];
+  }, [location]);
+
 
   useEffect(() => {
     if (!mapContainerRef.current || !robotPosition) return;
@@ -179,7 +181,7 @@ export default function OrderTrackingPage({ orderId, onBack }) {
     if (!robotMarkerRef.current) {
       robotMarkerRef.current = L.marker(robotPosition, { icon: robotIcon })
         .addTo(map)
-        .bindPopup('Delivery robot');
+        .bindPopup('Robot');
     } else {
       robotMarkerRef.current.setLatLng(robotPosition);
     }
@@ -188,7 +190,7 @@ export default function OrderTrackingPage({ orderId, onBack }) {
       if (!destinationMarkerRef.current) {
         destinationMarkerRef.current = L.marker(destination, { icon: destinationIcon })
           .addTo(map)
-          .bindPopup('Delivery destination');
+          .bindPopup('Destination');
       } else {
         destinationMarkerRef.current.setLatLng(destination);
       }

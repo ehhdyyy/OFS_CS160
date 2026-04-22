@@ -3149,6 +3149,8 @@ def get_order_location(
                     o.id,
                     o.user_id,
                     o.delivery_address,
+                    o.delivery_latitude,
+                    o.delivery_longitude,
                     d.id AS delivery_id,
                     d.status AS delivery_status,
                     d.robot_id,
@@ -3169,14 +3171,23 @@ def get_order_location(
         if not is_admin and int(row["user_id"]) != current_user["userId"]:
             raise HTTPException(status_code=403, detail="You can only view your own orders")
 
+        if row["delivery_latitude"] is None or row["delivery_longitude"] is None:
+            raise HTTPException(status_code=500, detail="Order is missing delivery coordinates")
+
         route_data = get_delivery_route(
             destination_address=row["delivery_address"],
             order_id=int(row["id"]),
         )
 
+        destination_location = {
+            "lat": float(row["delivery_latitude"]),
+            "lng": float(row["delivery_longitude"]),
+            "address": row["delivery_address"],
+        }
+
         if row["delivery_status"] == "delivered":
             progress_data = {
-                "current_location": route_data["destination"],
+                "current_location": destination_location,
                 "progress": 1.0,
                 "eta_minutes": 0,
             }
@@ -3193,7 +3204,6 @@ def get_order_location(
             }
 
         current_location = progress_data.get("current_location") or {}
-        destination_location = route_data.get("destination") or {}
         store_location = route_data.get("origin") or {}
 
         current_lat = current_location.get("lat")
@@ -3204,7 +3214,7 @@ def get_order_location(
         if current_lat is None or current_lng is None:
             raise HTTPException(status_code=500, detail="Route service did not return current coordinates")
         if destination_lat is None or destination_lng is None:
-            raise HTTPException(status_code=500, detail="Route service did not return destination coordinates")
+            raise HTTPException(status_code=500, detail="Order is missing destination coordinates")
 
         return {
             "order_id": int(row["id"]),
@@ -3228,7 +3238,7 @@ def get_order_location(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load order location: {str(e)}")
-
+    
 
 # ── Health check ────────────────────────────────────────────────────────────
 @app.get("/api/health")
