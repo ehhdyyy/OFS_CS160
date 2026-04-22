@@ -151,13 +151,21 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
   }
 
   function backFromPayment() {
-    setError('');
-    if (hasSavedPaymentMethods(savedPaymentMethods)) {
-      setStep('confirm-payment');
-      return;
-    }
+  setError('');
+
+  if (step === 'confirm-payment') {
+    setSavedCardCvv('');
     setStep('billing');
+    return;
   }
+
+  if (step === 'payment' && hasSavedPaymentMethods(savedPaymentMethods)) {
+    setStep('confirm-payment');
+    return;
+  }
+
+  setStep('billing');
+}
 
   // ── Geocoding + service-area validation ────────────────────────────────────
 
