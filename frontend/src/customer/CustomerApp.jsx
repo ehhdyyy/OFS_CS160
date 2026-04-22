@@ -131,13 +131,15 @@ export default function CustomerApp() {
     }
   }
 
-  async function checkoutCart(deliveryAddress) {
+  async function checkoutCart({ address, lat, lng } = {}) {
     const response = await fetch(`${API_BASE}/api/cart/checkout`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({
-        delivery_address: deliveryAddress ?? null,
+        delivery_address: address ?? null,
+        delivery_lat: lat ?? null,
+        delivery_lng: lng ?? null,
       }),
     });
 

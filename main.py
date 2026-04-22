@@ -331,6 +331,8 @@ class CartItemUpdateRequest(BaseModel):
 
 class CheckoutRequest(BaseModel):
     delivery_address: Optional[str] = None
+    delivery_lat: Optional[float] = None
+    delivery_lng: Optional[float] = None
 
 
 class DeleteAccountRequest(BaseModel):
@@ -1823,15 +1825,19 @@ def checkout_cart(
             text(
                 """
                 INSERT INTO orders (
-                    user_id, delivery_id, delivery_address, delivery_fee, total_price, total_weight, payment_status, paid_at, created_at
+                    user_id, delivery_id, delivery_address, delivery_latitude, delivery_longitude,
+                    delivery_fee, total_price, total_weight, payment_status, paid_at, created_at
                 ) VALUES (
-                    :user_id, NULL, :delivery_address, :delivery_fee, :total_price, :total_weight, 'paid', NOW(), NOW()
+                    :user_id, NULL, :delivery_address, :delivery_latitude, :delivery_longitude,
+                    :delivery_fee, :total_price, :total_weight, 'paid', NOW(), NOW()
                 )
                 """
             ),
             {
                 "user_id": current_user["userId"],
                 "delivery_address": delivery_address,
+                "delivery_latitude": body.delivery_lat,
+                "delivery_longitude": body.delivery_lng,
                 "delivery_fee": float(delivery_fee),
                 "total_price": float(total_price),
                 "total_weight": float(total_weight.quantize(Decimal("0.01"))),
