@@ -520,6 +520,53 @@
   color: #b91c1c;
 }
 
+.customer-app .profile-payment-methods {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.customer-app .profile-payment-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.customer-app .profile-payment-title {
+  margin: 0 0 0.2rem;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+
+.customer-app .profile-payment-meta {
+  margin: 0;
+  color: var(--text-mid);
+  font-size: 0.9rem;
+}
+
+.customer-app .profile-payment-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.customer-app .profile-field-error {
+  font-size: 0.8rem;
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.customer-app .profile-input-invalid {
+  border-color: #fca5a5;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
 .customer-app .profile-subtitle {
   margin: 0;
   font-size: 0.98rem;
