@@ -195,8 +195,8 @@ const weightTotal = useMemo(() => (
         cartTotal={cartTotal}
         deliveryFee={deliveryFee}
         finalTotal={finalTotal}
-        onConfirmPayment={async (deliveryAddress) => {
-          await onCheckout(deliveryAddress);
+        onConfirmPayment={async (deliveryData) => {
+          await onCheckout(deliveryData);
           setShowCheckoutModal(false);
         }}
       />

@@ -1,5 +1,12 @@
--- OFS combined schema
--- Includes base store schema plus profile, password-reset, and saved payment method support.
+-- OFS schema
+-- Built for the OFS online organic food store + admin portal.
+-- Key modeling choices:
+-- - products is the single catalog source of truth for customer and admin
+-- - inventory stores current quantity + low stock threshold
+-- - orders + order_items are normalized for multi-product purchases
+-- - deliveries represents a robot trip/run, and many orders can belong to one delivery
+-- - delivery revenue is derived from orders + order_items, not stored in a revenue table
+-- - cart, cart_items, and invite_codes are kept compatible with the existing program
 
 DROP DATABASE IF EXISTS ofs_db;
 CREATE DATABASE IF NOT EXISTS ofs_db;
@@ -30,13 +37,16 @@ CREATE TABLE users (
     shipping_zip           VARCHAR(20)  NULL,
     shipping_country       VARCHAR(100) NULL,
 
-    -- Legacy single-card fields kept for compatibility
+    -- Payment info (no real processing — stored for UX only)
     payment_cardholder_name VARCHAR(255) NULL,
     payment_card_last4      CHAR(4)      NULL,
     payment_card_expiry     VARCHAR(7)   NULL,
     payment_card_type       VARCHAR(30)  NULL,
 
-    -- Reserved for future location-based catalog filtering
+    -- RESERVED FOR FUTURE USE: location-based product filtering.
+    -- Do NOT read or write these columns from the UI yet.
+    -- Intended to allow surfacing locally-relevant products to the customer
+    -- once the product-catalog feature is built out.
     location_city    VARCHAR(100) NULL,
     location_state   VARCHAR(100) NULL,
     location_country VARCHAR(100) NULL,
@@ -67,8 +77,10 @@ CREATE TABLE inventory (
 );
 
 CREATE TABLE robots (
-    id       INT AUTO_INCREMENT PRIMARY KEY,
-    status   ENUM('on_delivery', 'charging', 'offline') NOT NULL DEFAULT 'charging'
+    id                  INT AUTO_INCREMENT PRIMARY KEY,
+    status              ENUM('on_delivery', 'charging', 'offline') NOT NULL DEFAULT 'charging',
+    battery_pct         INT NOT NULL DEFAULT 100,
+    charging_started_at TIMESTAMP NULL DEFAULT NULL
 );
 
 CREATE TABLE deliveries (
@@ -81,18 +93,16 @@ CREATE TABLE deliveries (
 );
 
 CREATE TABLE orders (
-    id                 INT AUTO_INCREMENT PRIMARY KEY,
-    user_id            INT NOT NULL,
-    delivery_id        INT NULL,
-    delivery_address   VARCHAR(255) NOT NULL,
-    delivery_latitude  DECIMAL(10, 7) NULL,
-    delivery_longitude DECIMAL(10, 7) NULL,
-    delivery_fee       DECIMAL(6, 2) NOT NULL DEFAULT 0.00,
-    total_price        DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
-    total_weight       DECIMAL(8, 2) NOT NULL DEFAULT 0.00,
-    payment_status     ENUM('paid', 'failed', 'refunded') NOT NULL DEFAULT 'paid',
-    paid_at            TIMESTAMP NULL DEFAULT NULL,
-    created_at         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    id               INT AUTO_INCREMENT PRIMARY KEY,
+    user_id          INT NOT NULL,
+    delivery_id      INT NULL,
+    delivery_address VARCHAR(255) NOT NULL,
+    delivery_fee     DECIMAL(6, 2) NOT NULL DEFAULT 0.00,
+    total_price      DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+    total_weight     DECIMAL(8, 2) NOT NULL DEFAULT 0.00,
+    payment_status   ENUM('paid', 'failed', 'refunded') NOT NULL DEFAULT 'paid',
+    paid_at          TIMESTAMP NULL DEFAULT NULL,
+    created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id),
     FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE SET NULL
 );

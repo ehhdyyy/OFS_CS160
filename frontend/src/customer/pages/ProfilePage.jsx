@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getStoredName, getStoredEmail, getStoredRole, persistFrontendSession, clearFrontendSession } from '../../utils/authSession';
+import { validateAddress } from '../../utils/validateAddress';
 
 const API_BASE = 'http://localhost:8000';
 
@@ -159,13 +160,15 @@ function ChangePasswordSection() {
 // ── Address form (reused for billing + shipping) ─────────────────────────────
 function AddressForm({ addressType, endpoint, initial }) {
   const [fields, setFields] = useState({
-    line1: initial?.line1 || '',
-    line2: initial?.line2 || '',
-    city: initial?.city || '',
-    state: initial?.state || '',
-    zipCode: initial?.zipCode || '',
-    country: initial?.country || '',
+    line1:   initial?.line1    || '',
+    line2:   initial?.line2    || '',
+    city:    initial?.city     || '',
+    state:   initial?.state    || '',
+    zipCode: initial?.zipCode  || '',
+    country: initial?.country  || '',
   });
+  const [fieldErrors, setFieldErrors] = useState({ line1: '', city: '', state: '', zipCode: '', country: '' });
+  const [serviceAreaWarning, setServiceAreaWarning] = useState('');
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState(null);
 
@@ -175,20 +178,32 @@ function AddressForm({ addressType, endpoint, initial }) {
 
   async function handleSave(e) {
     e.preventDefault();
-    setSaving(true);
     setStatus(null);
+
+    const { errors, serviceAreaWarning: warning, isValid } = validateAddress(fields);
+    setFieldErrors(errors);
+
+    if (!isValid) return;
+
+    // Service area: surface warning and require a second click to confirm.
+    if (warning && !serviceAreaWarning) {
+      setServiceAreaWarning(warning);
+      return;
+    }
+    setServiceAreaWarning('');
+    setSaving(true);
     try {
       const res = await fetch(`${API_BASE}${endpoint}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          line1: fields.line1.trim() || null,
-          line2: fields.line2.trim() || null,
-          city: fields.city.trim() || null,
-          state: fields.state.trim() || null,
-          zip_code: fields.zipCode.trim() || null,
-          country: fields.country.trim() || null,
+          line1:    fields.line1.trim()    || null,
+          line2:    fields.line2.trim()    || null,
+          city:     fields.city.trim()     || null,
+          state:    fields.state.trim()    || null,
+          zip_code: fields.zipCode.trim()  || null,
+          country:  fields.country.trim()  || null,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -204,8 +219,16 @@ function AddressForm({ addressType, endpoint, initial }) {
   return (
     <form onSubmit={handleSave} className="profile-form">
       <div className="profile-form-row">
-        <label className="profile-label" htmlFor={`${addressType}-line1`}>Address Line 1</label>
-        <input id={`${addressType}-line1`} className="profile-input" type="text" value={fields.line1} onChange={set('line1')} placeholder="123 Main St" />
+        <label className="profile-label" htmlFor={`${addressType}-line1`}>Address Line 1 *</label>
+        <input
+          id={`${addressType}-line1`}
+          className={`profile-input${fieldErrors.line1 ? ' profile-input-invalid' : ''}`}
+          type="text"
+          value={fields.line1}
+          onChange={set('line1')}
+          placeholder="123 Main St"
+        />
+        {fieldErrors.line1 && <span className="profile-field-error">{fieldErrors.line1}</span>}
       </div>
       <div className="profile-form-row">
         <label className="profile-label" htmlFor={`${addressType}-line2`}>Address Line 2</label>
@@ -213,25 +236,58 @@ function AddressForm({ addressType, endpoint, initial }) {
       </div>
       <div className="profile-form-grid">
         <div className="profile-form-row">
-          <label className="profile-label" htmlFor={`${addressType}-city`}>City</label>
-          <input id={`${addressType}-city`} className="profile-input" type="text" value={fields.city} onChange={set('city')} />
+          <label className="profile-label" htmlFor={`${addressType}-city`}>City *</label>
+          <input
+            id={`${addressType}-city`}
+            className={`profile-input${fieldErrors.city ? ' profile-input-invalid' : ''}`}
+            type="text"
+            value={fields.city}
+            onChange={set('city')}
+          />
+          {fieldErrors.city && <span className="profile-field-error">{fieldErrors.city}</span>}
         </div>
         <div className="profile-form-row">
-          <label className="profile-label" htmlFor={`${addressType}-state`}>State / Province</label>
-          <input id={`${addressType}-state`} className="profile-input" type="text" value={fields.state} onChange={set('state')} />
+          <label className="profile-label" htmlFor={`${addressType}-state`}>State / Province *</label>
+          <input
+            id={`${addressType}-state`}
+            className={`profile-input${fieldErrors.state ? ' profile-input-invalid' : ''}`}
+            type="text"
+            value={fields.state}
+            onChange={set('state')}
+          />
+          {fieldErrors.state && <span className="profile-field-error">{fieldErrors.state}</span>}
         </div>
         <div className="profile-form-row">
-          <label className="profile-label" htmlFor={`${addressType}-zip`}>ZIP / Postal Code</label>
-          <input id={`${addressType}-zip`} className="profile-input" type="text" value={fields.zipCode} onChange={set('zipCode')} />
+          <label className="profile-label" htmlFor={`${addressType}-zip`}>ZIP / Postal Code *</label>
+          <input
+            id={`${addressType}-zip`}
+            className={`profile-input${fieldErrors.zipCode ? ' profile-input-invalid' : ''}`}
+            type="text"
+            value={fields.zipCode}
+            onChange={set('zipCode')}
+            placeholder="95112 or 95112-3456"
+          />
+          {fieldErrors.zipCode && <span className="profile-field-error">{fieldErrors.zipCode}</span>}
         </div>
         <div className="profile-form-row">
-          <label className="profile-label" htmlFor={`${addressType}-country`}>Country</label>
-          <input id={`${addressType}-country`} className="profile-input" type="text" value={fields.country} onChange={set('country')} placeholder="US" />
+          <label className="profile-label" htmlFor={`${addressType}-country`}>Country *</label>
+          <input
+            id={`${addressType}-country`}
+            className={`profile-input${fieldErrors.country ? ' profile-input-invalid' : ''}`}
+            type="text"
+            value={fields.country}
+            onChange={set('country')}
+            placeholder="US"
+          />
+          {fieldErrors.country && <span className="profile-field-error">{fieldErrors.country}</span>}
         </div>
       </div>
+      {serviceAreaWarning && (
+        <p className="profile-service-warning">{serviceAreaWarning}</p>
+      )}
       <StatusMessage status={status} />
       <button type="submit" className="profile-save-btn" disabled={saving}>
-        {saving ? 'Saving…' : 'Save Address'}
+        {saving ? 'Saving…' : serviceAreaWarning ? 'Save anyway' : 'Save Address'}
       </button>
     </form>
   );
