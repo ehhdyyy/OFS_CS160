@@ -2,6 +2,10 @@ import '../styles/orderConfirmation.css';
 
 export default function OrderConfirmationPage({ order, onContinueShopping }) {
   const subtotal = order.total_price - order.delivery_fee;
+  const isInTransit = order.status === 'out_for_delivery';
+  const subtitle = isInTransit
+    ? `${order.robot_label || 'Your robot'} is on the way with your order.`
+    : 'Thank you for your purchase. Your order is being prepared for delivery.';
 
   return (
     <div className="confirmation-page">
@@ -9,7 +13,7 @@ export default function OrderConfirmationPage({ order, onContinueShopping }) {
         <div className="confirmation-icon">✓</div>
         <h1>Order Confirmed!</h1>
         <p className="confirmation-subtitle">
-          Thank you for your purchase. Your order is being prepared for delivery.
+          {subtitle}
         </p>
 
         <div className="confirmation-order-id">

@@ -1,4 +1,3 @@
-````md
 # OFS - Full Stack App (FastAPI + React/Vite + MySQL)
 
 Full Stack Web Application  
