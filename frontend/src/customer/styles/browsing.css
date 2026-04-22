@@ -808,3 +808,14 @@
   margin-top: 0.25rem;
   accent-color: var(--green);
 }
+
+.checkout-service-warning {
+  font-size: 0.83rem;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  padding: 0.45rem 0.7rem;
+  margin-top: 0.5rem;
+  line-height: 1.4;
+}
