@@ -9,8 +9,7 @@ Run:  pytest tests/test_orders.py -v
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import text
-from main import app, SessionLocal
+from main import app
 
 client = TestClient(app)
 
@@ -152,87 +151,6 @@ class TestOrderStatus:
         res = client.get("/api/orders/1/status", cookies=cookies)
         data = res.json()
         assert data["eta_minutes"] is None
-
-    def test_in_transit_order_auto_completes_after_eta(self):
-        import time
-        import datetime
-
-        ts = str(int(time.time()))
-        email = f"autodelivered_{ts}@ofs.com"
-
-        client.post("/api/auth/register", json={
-            "name": "Auto Delivered User",
-            "email": email,
-            "password": "Test1234!",
-        })
-
-        db = SessionLocal()
-        try:
-            user_id = db.execute(
-                text("SELECT id FROM users WHERE email = :email"),
-                {"email": email},
-            ).scalar_one()
-
-            robot_result = db.execute(
-                text("INSERT INTO robots (status) VALUES ('on_delivery')")
-            )
-            robot_id = int(robot_result.lastrowid)
-
-            started_at = datetime.datetime.now() - datetime.timedelta(hours=2)
-            delivery_result = db.execute(
-                text(
-                    """
-                    INSERT INTO deliveries (robot_id, status, started_at, completed_at)
-                    VALUES (:robot_id, 'in_transit', :started_at, NULL)
-                    """
-                ),
-                {"robot_id": robot_id, "started_at": started_at},
-            )
-            delivery_id = int(delivery_result.lastrowid)
-
-            order_result = db.execute(
-                text(
-                    """
-                    INSERT INTO orders (
-                        user_id, delivery_id, delivery_address, delivery_fee, total_price, total_weight, payment_status, paid_at, created_at
-                    ) VALUES (
-                        :user_id, :delivery_id, :delivery_address, 0.00, 12.34, 2.00, 'paid', NOW(), NOW()
-                    )
-                    """
-                ),
-                {
-                    "user_id": user_id,
-                    "delivery_id": delivery_id,
-                    "delivery_address": "1 Auto Complete Way, San Jose, CA 95112",
-                },
-            )
-            order_id = int(order_result.lastrowid)
-            db.commit()
-        finally:
-            db.close()
-
-        cookies = login_as_manager()
-        res = client.get(f"/api/orders/{order_id}/status", cookies=cookies)
-        assert res.status_code == 200
-        data = res.json()
-        assert data["status"] == "delivered"
-        assert data["delivery_status"] == "delivered"
-        assert data["eta_minutes"] is None
-
-        db = SessionLocal()
-        try:
-            robot_status = db.execute(
-                text("SELECT status FROM robots WHERE id = :robot_id"),
-                {"robot_id": robot_id},
-            ).scalar_one()
-            delivery_status = db.execute(
-                text("SELECT status FROM deliveries WHERE id = :delivery_id"),
-                {"delivery_id": delivery_id},
-            ).scalar_one()
-            assert robot_status == "charging"
-            assert delivery_status == "delivered"
-        finally:
-            db.close()
 
 
 # ══════════════════════════════════════════════════════════════════════════

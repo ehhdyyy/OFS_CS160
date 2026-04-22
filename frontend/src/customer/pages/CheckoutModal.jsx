@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
+import { validateAddress } from '../../utils/validateAddress';
 
 const API_BASE = 'http://localhost:8000';
+
+const EMPTY_DELIVERY_FIELDS = { line1: '', city: '', state: '', zipCode: '', country: 'US' };
+const EMPTY_DELIVERY_ERRORS = { line1: '', city: '', state: '', zipCode: '', country: '' };
+
+// Delivery area: Downtown San Jose bounding box
+const SERVICE_LAT_MIN = 37.32, SERVICE_LAT_MAX = 37.35;
+const SERVICE_LNG_MIN = -121.91, SERVICE_LNG_MAX = -121.86;
 
 /** Format structured address fields into a single delivery address string. */
 function formatAddress(addr) {
@@ -18,6 +26,17 @@ function hasSavedPaymentMethods(methods) {
   return Array.isArray(methods) && methods.length > 0;
 }
 
+async function geocodeToCoords(formattedAddress) {
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || (typeof window !== 'undefined' && window.GOOGLE_MAPS_API_KEY) || '';
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(formattedAddress)}&key=${encodeURIComponent(apiKey)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Geocoding request failed.');
+  const data = await res.json();
+  if (data.status !== 'OK' || !Array.isArray(data.results) || data.results.length === 0) return null;
+  const loc = data.results[0].geometry.location;
+  return { lat: loc.lat, lng: loc.lng };
+}
+
 export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, deliveryFee, finalTotal, onConfirmPayment }) {
   /**
    * Step order:
@@ -30,15 +49,19 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
   const [step, setStep] = useState('address');
 
   // Delivery
-  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [deliveryFields, setDeliveryFields] = useState(EMPTY_DELIVERY_FIELDS);
+  const [deliveryErrors, setDeliveryErrors] = useState(EMPTY_DELIVERY_ERRORS);
+  const [deliveryCoords, setDeliveryCoords] = useState(null);
+  const [isGeocoding, setIsGeocoding] = useState(false);
   const [savedShipping, setSavedShipping] = useState(null);
 
   // Billing — billingView drives the sub-UI within the billing step
   // null = "same as shipping?" question
   // 'confirm-saved' = show saved billing for approval
   // 'manual' = manual structured fields
-  const [billingFields, setBillingFields] = useState({ street: '', apt: '', city: '', state: '', zip: '' });
-  const [billingErrors, setBillingErrors] = useState({ street: '', city: '', state: '', zip: '' });
+  const [billingFields, setBillingFields] = useState({ street: '', apt: '', city: '', state: '', zip: '', country: 'US' });
+  const [billingErrors, setBillingErrors] = useState({ street: '', city: '', state: '', zip: '', country: '' });
+  const [billingServiceWarning, setBillingServiceWarning] = useState('');
   const [billingView, setBillingView] = useState(null);
   const [savedBilling, setSavedBilling] = useState(null);
 
@@ -59,9 +82,13 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
     if (!isOpen) return;
 
     setStep('address');
-    setDeliveryAddress('');
-    setBillingFields({ street: '', apt: '', city: '', state: '', zip: '' });
-    setBillingErrors({ street: '', city: '', state: '', zip: '' });
+    setDeliveryFields(EMPTY_DELIVERY_FIELDS);
+    setDeliveryErrors(EMPTY_DELIVERY_ERRORS);
+    setDeliveryCoords(null);
+    setIsGeocoding(false);
+    setBillingFields({ street: '', apt: '', city: '', state: '', zip: '', country: 'US' });
+    setBillingErrors({ street: '', city: '', state: '', zip: '', country: '' });
+    setBillingServiceWarning('');
     setBillingView(null);
     setError('');
     setSavedShipping(null);
@@ -132,6 +159,36 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
     setStep('billing');
   }
 
+  // ── Geocoding + service-area validation ────────────────────────────────────
+
+  async function validateAndGeocode(formattedAddress) {
+    setIsGeocoding(true);
+    setError('');
+    try {
+      const coords = await geocodeToCoords(formattedAddress);
+      if (!coords) {
+        setError('Address not found. Please check your address and try again.');
+        return null;
+      }
+      if (
+        coords.lat < SERVICE_LAT_MIN || coords.lat > SERVICE_LAT_MAX ||
+        coords.lng < SERVICE_LNG_MIN || coords.lng > SERVICE_LNG_MAX
+      ) {
+        setError(
+          'This address is outside our Downtown San Jose delivery area. ' +
+          'Please enter an address within the service area (roughly bounded by lat 37.32–37.35, lng 121.86–121.91°W).'
+        );
+        return null;
+      }
+      return coords;
+    } catch {
+      setError('Unable to validate address. Please check your connection and try again.');
+      return null;
+    } finally {
+      setIsGeocoding(false);
+    }
+  }
+
   // ── Formatters ─────────────────────────────────────────────────────────────
 
   function formatCardNumber(value) {
@@ -147,29 +204,71 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
-  function handleAddressNext(e) {
+  async function handleAddressNext(e) {
     e.preventDefault();
     setError('');
-    if (!deliveryAddress.trim()) {
-      setError('Please enter a delivery address.');
-      return;
-    }
+    const { errors: vErrs, isValid } = validateAddress({
+      line1:   deliveryFields.line1,
+      city:    deliveryFields.city,
+      state:   deliveryFields.state,
+      zipCode: deliveryFields.zipCode,
+      country: deliveryFields.country,
+    });
+    setDeliveryErrors({
+      line1:   vErrs.line1   || '',
+      city:    vErrs.city    || '',
+      state:   vErrs.state   || '',
+      zipCode: vErrs.zipCode || '',
+      country: vErrs.country || '',
+    });
+    if (!isValid) return;
+
+    const formattedAddress = formatAddress(deliveryFields);
+    const coords = await validateAndGeocode(formattedAddress);
+    if (!coords) return;
+    setDeliveryCoords(coords);
+    goToBilling();
+  }
+
+  async function handleConfirmSavedShipping() {
+    const fields = {
+      line1:   savedShipping.line1   || '',
+      city:    savedShipping.city    || '',
+      state:   savedShipping.state   || '',
+      zipCode: savedShipping.zipCode || '',
+      country: savedShipping.country || '',
+    };
+    setDeliveryFields(fields);
+    const formattedAddress = formatAddress(fields);
+    const coords = await validateAndGeocode(formattedAddress);
+    if (!coords) return;
+    setDeliveryCoords(coords);
     goToBilling();
   }
 
   function handleBillingManualNext(e) {
     e.preventDefault();
-    const { street, city, state, zip } = billingFields;
-    const errs = {
-      street: street.trim() ? '' : 'Street address is required.',
-      city:   city.trim()   ? '' : 'City is required.',
-      state:  state.trim()  ? '' : 'State is required.',
-      zip:    !zip.trim()                        ? 'ZIP code is required.'
-            : !/^\d{5}$/.test(zip.trim())        ? 'ZIP code must be exactly 5 digits.'
-            : '',
-    };
-    setBillingErrors(errs);
-    if (Object.values(errs).some(Boolean)) return;
+    const { errors: vErrs, serviceAreaWarning, isValid } = validateAddress({
+      line1:   billingFields.street,
+      city:    billingFields.city,
+      state:   billingFields.state,
+      zipCode: billingFields.zip,
+      country: billingFields.country,
+    });
+    setBillingErrors({
+      street:  vErrs.line1    || '',
+      city:    vErrs.city     || '',
+      state:   vErrs.state    || '',
+      zip:     vErrs.zipCode  || '',
+      country: vErrs.country  || '',
+    });
+    if (!isValid) return;
+    // Service area: show warning and require a second click to acknowledge.
+    if (serviceAreaWarning && !billingServiceWarning) {
+      setBillingServiceWarning(serviceAreaWarning);
+      return;
+    }
+    setBillingServiceWarning('');
     goToPaymentStep();
   }
 
@@ -182,9 +281,14 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
       setError('Please enter your card CVV.');
       return;
     }
+    const formattedAddr = formatAddress(deliveryFields).trim();
+    if (!formattedAddr || !deliveryCoords) {
+      setError('Delivery address is missing. Please go back and enter a valid address.');
+      return;
+    }
     setIsProcessing(true);
     try {
-      await onConfirmPayment(deliveryAddress.trim() || undefined);
+      await onConfirmPayment({ address: formattedAddr, lat: deliveryCoords.lat, lng: deliveryCoords.lng });
     } catch (err) {
       setError(err.message || 'Payment failed. Please try again.');
       setIsProcessing(false);
@@ -203,7 +307,7 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
   }
 
   function handleClose() {
-    if (isProcessing) return;
+    if (isProcessing || isGeocoding) return;
     onClose();
   }
 
@@ -215,6 +319,8 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
   const deliveryState = onDeliveryStep ? 'active' : 'done';
   const billingState  = onDeliveryStep ? '' : onBillingStep ? 'active' : 'done';
   const paymentState  = onPaymentStep  ? 'active' : '';
+
+  const formattedDeliveryAddress = formatAddress(deliveryFields);
 
   return (
     <div className="checkout-overlay" onClick={handleClose}>
@@ -228,7 +334,7 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
             <span className="checkout-step-sep">›</span>
             <span className={`checkout-step ${paymentState}`}>3. Payment</span>
           </div>
-          <button type="button" className="checkout-modal-close" onClick={handleClose} disabled={isProcessing}>✕</button>
+          <button type="button" className="checkout-modal-close" onClick={handleClose} disabled={isProcessing || isGeocoding}>✕</button>
         </div>
 
         <div className="checkout-modal-body">
@@ -265,16 +371,23 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
                 <p className="checkout-saved-address-label">Deliver to your saved address?</p>
                 <p className="checkout-saved-address-value">{formatAddress(savedShipping)}</p>
               </div>
+              {error && <p className="checkout-error">{error}</p>}
               <div className="checkout-btn-row">
-                <button type="button" className="checkout-back-btn" onClick={() => setStep('address')}>
+                <button
+                  type="button"
+                  className="checkout-back-btn"
+                  onClick={() => { setError(''); setDeliveryErrors(EMPTY_DELIVERY_ERRORS); setStep('address'); }}
+                  disabled={isGeocoding}
+                >
                   Use a different address
                 </button>
                 <button
                   type="button"
                   className="checkout-pay-btn"
-                  onClick={() => { setDeliveryAddress(formatAddress(savedShipping)); goToBilling(); }}
+                  onClick={handleConfirmSavedShipping}
+                  disabled={isGeocoding}
                 >
-                  Yes, deliver here
+                  {isGeocoding ? 'Validating...' : 'Yes, deliver here'}
                 </button>
               </div>
             </div>
@@ -285,22 +398,85 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
             <form onSubmit={handleAddressNext} className="checkout-section">
               <h3>Delivery Address</h3>
               <div className="checkout-field">
-                <label>Street Address</label>
+                <label>Street Address *</label>
                 <input
                   type="text"
-                  placeholder="123 Main St, City, State 12345"
-                  value={deliveryAddress}
-                  onChange={(e) => setDeliveryAddress(e.target.value)}
+                  placeholder="123 Main St"
+                  value={deliveryFields.line1}
+                  onChange={(e) => { setDeliveryFields((p) => ({ ...p, line1: e.target.value })); setDeliveryErrors((p) => ({ ...p, line1: '' })); }}
+                  className={deliveryErrors.line1 ? 'checkout-input-invalid' : ''}
+                  disabled={isGeocoding}
                 />
+                {deliveryErrors.line1 && <span className="checkout-field-error">{deliveryErrors.line1}</span>}
+              </div>
+              <div className="checkout-field-row">
+                <div className="checkout-field">
+                  <label>City *</label>
+                  <input
+                    type="text"
+                    placeholder="San Jose"
+                    value={deliveryFields.city}
+                    onChange={(e) => { setDeliveryFields((p) => ({ ...p, city: e.target.value })); setDeliveryErrors((p) => ({ ...p, city: '' })); }}
+                    className={deliveryErrors.city ? 'checkout-input-invalid' : ''}
+                    disabled={isGeocoding}
+                  />
+                  {deliveryErrors.city && <span className="checkout-field-error">{deliveryErrors.city}</span>}
+                </div>
+                <div className="checkout-field">
+                  <label>State *</label>
+                  <input
+                    type="text"
+                    placeholder="CA"
+                    value={deliveryFields.state}
+                    onChange={(e) => { setDeliveryFields((p) => ({ ...p, state: e.target.value })); setDeliveryErrors((p) => ({ ...p, state: '' })); }}
+                    className={deliveryErrors.state ? 'checkout-input-invalid' : ''}
+                    disabled={isGeocoding}
+                  />
+                  {deliveryErrors.state && <span className="checkout-field-error">{deliveryErrors.state}</span>}
+                </div>
+              </div>
+              <div className="checkout-field-row">
+                <div className="checkout-field">
+                  <label>ZIP Code *</label>
+                  <input
+                    type="text"
+                    placeholder="95112"
+                    maxLength={10}
+                    value={deliveryFields.zipCode}
+                    onChange={(e) => { setDeliveryFields((p) => ({ ...p, zipCode: e.target.value.replace(/[^A-Za-z0-9-]/g, '').slice(0, 10) })); setDeliveryErrors((p) => ({ ...p, zipCode: '' })); }}
+                    className={deliveryErrors.zipCode ? 'checkout-input-invalid' : ''}
+                    disabled={isGeocoding}
+                  />
+                  {deliveryErrors.zipCode && <span className="checkout-field-error">{deliveryErrors.zipCode}</span>}
+                </div>
+                <div className="checkout-field">
+                  <label>Country *</label>
+                  <input
+                    type="text"
+                    placeholder="US"
+                    value={deliveryFields.country}
+                    onChange={(e) => { setDeliveryFields((p) => ({ ...p, country: e.target.value })); setDeliveryErrors((p) => ({ ...p, country: '' })); }}
+                    className={deliveryErrors.country ? 'checkout-input-invalid' : ''}
+                    disabled={isGeocoding}
+                  />
+                  {deliveryErrors.country && <span className="checkout-field-error">{deliveryErrors.country}</span>}
+                </div>
               </div>
               {error && <p className="checkout-error">{error}</p>}
               <div className="checkout-btn-row">
                 {hasAddress(savedShipping) && (
-                  <button type="button" className="checkout-back-btn" onClick={() => { setError(''); setStep('confirm'); }}>
+                  <button
+                    type="button"
+                    className="checkout-back-btn"
+                    onClick={() => { setError(''); setDeliveryErrors(EMPTY_DELIVERY_ERRORS); setStep('confirm'); }}
+                    disabled={isGeocoding}
+                  >
                     ← Back
                   </button>
                 )}
-                <button type="submit" className="checkout-pay-btn">Continue</button>
+                <button type="submit" className="checkout-pay-btn" disabled={isGeocoding}>
+                  {isGeocoding ? 'Validating...' : 'Continue'}
+                </button>
               </div>
             </form>
           )}
@@ -315,7 +491,7 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
                 <>
                   <div className="checkout-saved-address-card">
                     <p className="checkout-saved-address-label">Is your billing address the same as your delivery address?</p>
-                    <p className="checkout-saved-address-value">{deliveryAddress}</p>
+                    <p className="checkout-saved-address-value">{formattedDeliveryAddress}</p>
                   </div>
                   <div className="checkout-btn-row">
                     <button
@@ -404,7 +580,7 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
                       <label>City *</label>
                       <input
                         type="text"
-                        placeholder="San Francisco"
+                        placeholder="San Jose"
                         value={billingFields.city}
                         onChange={(e) => setBillingFields((p) => ({ ...p, city: e.target.value }))}
                         className={billingErrors.city ? 'checkout-input-invalid' : ''}
@@ -423,32 +599,50 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
                       {billingErrors.state && <span className="checkout-field-error">{billingErrors.state}</span>}
                     </div>
                   </div>
-                  <div className="checkout-field" style={{ maxWidth: '160px' }}>
-                    <label>ZIP Code *</label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="94105"
-                      maxLength={5}
-                      value={billingFields.zip}
-                      onChange={(e) => setBillingFields((p) => ({ ...p, zip: e.target.value.replace(/\D/g, '').slice(0, 5) }))}
-                      className={billingErrors.zip ? 'checkout-input-invalid' : ''}
-                    />
-                    {billingErrors.zip && <span className="checkout-field-error">{billingErrors.zip}</span>}
+                  <div className="checkout-field-row">
+                    <div className="checkout-field">
+                      <label>ZIP / Postal Code *</label>
+                      <input
+                        type="text"
+                        placeholder="95112 or 95112-3456"
+                        maxLength={10}
+                        value={billingFields.zip}
+                        onChange={(e) => setBillingFields((p) => ({ ...p, zip: e.target.value.replace(/[^A-Za-z0-9-]/g, '').slice(0, 10) }))}
+                        className={billingErrors.zip ? 'checkout-input-invalid' : ''}
+                      />
+                      {billingErrors.zip && <span className="checkout-field-error">{billingErrors.zip}</span>}
+                    </div>
+                    <div className="checkout-field">
+                      <label>Country *</label>
+                      <input
+                        type="text"
+                        placeholder="US"
+                        value={billingFields.country}
+                        onChange={(e) => setBillingFields((p) => ({ ...p, country: e.target.value }))}
+                        className={billingErrors.country ? 'checkout-input-invalid' : ''}
+                      />
+                      {billingErrors.country && <span className="checkout-field-error">{billingErrors.country}</span>}
+                    </div>
                   </div>
+                  {billingServiceWarning && (
+                    <p className="checkout-service-warning">{billingServiceWarning}</p>
+                  )}
                   <div className="checkout-btn-row" style={{ marginTop: '0.75rem' }}>
                     <button
                       type="button"
                       className="checkout-back-btn"
                       onClick={() => {
                         setError('');
-                        setBillingErrors({ street: '', city: '', state: '', zip: '' });
+                        setBillingErrors({ street: '', city: '', state: '', zip: '', country: '' });
+                        setBillingServiceWarning('');
                         setBillingView(hasAddress(savedBilling) ? 'confirm-saved' : null);
                       }}
                     >
                       ← Back
                     </button>
-                    <button type="submit" className="checkout-pay-btn">Continue to Payment</button>
+                    <button type="submit" className="checkout-pay-btn">
+                      {billingServiceWarning ? 'Continue anyway' : 'Continue to Payment'}
+                    </button>
                   </div>
                 </form>
               )}

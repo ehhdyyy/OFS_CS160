@@ -625,6 +625,30 @@
   }
 }
 
+/* ── Address validation ───────────────────────────────────────────────────── */
+
+.customer-app .profile-input-invalid {
+  border-color: #dc2626 !important;
+}
+
+.customer-app .profile-field-error {
+  font-size: 0.78rem;
+  color: #dc2626;
+  margin-top: 0.25rem;
+  display: block;
+}
+
+.customer-app .profile-service-warning {
+  font-size: 0.85rem;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.5rem;
+  line-height: 1.4;
+}
+
 /* ── End profile page ─────────────────────────────────────────────────────── */
 
 @media (max-width: 960px) {
