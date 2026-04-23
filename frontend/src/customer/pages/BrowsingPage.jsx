@@ -487,6 +487,9 @@ const weightTotal = useMemo(() => (
                   <div className="customer-cart-list">
                     {cart.map((item) => (
                       <div className="customer-cart-row" key={item.id}>
+                        <div className="customer-cart-product-image">
+                          <img src={getFallbackImage(item)} alt={item.name} className="customer-cart-image" />
+                        </div>
                         <div>
                           <p className="customer-cart-product-name">{item.name}</p>
                           <p className="customer-cart-product-price">

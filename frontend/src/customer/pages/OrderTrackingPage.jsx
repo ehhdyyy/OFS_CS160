@@ -164,11 +164,12 @@ export default function OrderTrackingPage({ orderId, onBack }) {
     if (location?.latitude != null && location?.longitude != null) {
       return [Number(location.latitude), Number(location.longitude)];
     }
+
     if (location?.current_location?.lat != null && location?.current_location?.lng != null) {
       return [Number(location.current_location.lat), Number(location.current_location.lng)];
     }
-    return destination;
-  }, [location, destination]);
+  }, [location]);
+
 
   useEffect(() => {
     if (!mapContainerRef.current || !robotPosition) return;
@@ -186,7 +187,7 @@ export default function OrderTrackingPage({ orderId, onBack }) {
     if (!robotMarkerRef.current) {
       robotMarkerRef.current = L.marker(robotPosition, { icon: robotIcon })
         .addTo(map)
-        .bindPopup('Delivery robot');
+        .bindPopup('Robot');
     } else {
       robotMarkerRef.current.setLatLng(robotPosition);
     }
@@ -195,7 +196,7 @@ export default function OrderTrackingPage({ orderId, onBack }) {
       if (!destinationMarkerRef.current) {
         destinationMarkerRef.current = L.marker(destination, { icon: destinationIcon })
           .addTo(map)
-          .bindPopup('Delivery destination');
+          .bindPopup('Destination');
       } else {
         destinationMarkerRef.current.setLatLng(destination);
       }
@@ -204,13 +205,6 @@ export default function OrderTrackingPage({ orderId, onBack }) {
     if (polylineRef.current) {
       polylineRef.current.remove();
       polylineRef.current = null;
-    }
-
-    if (destination) {
-      polylineRef.current = L.polyline([robotPosition, destination]).addTo(map);
-      map.fitBounds(L.latLngBounds([robotPosition, destination]), { padding: [40, 40] });
-    } else {
-      map.setView(robotPosition, 15);
     }
 
     return () => {};

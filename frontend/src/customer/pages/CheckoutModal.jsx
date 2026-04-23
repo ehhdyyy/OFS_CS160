@@ -770,7 +770,7 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
               </div>
               <div className="checkout-field-row">
                 <div className="checkout-field">
-                  <label>Expiry</label>
+                  <label>Expiry Date</label>
                   <input
                     type="text"
                     placeholder="MM/YY"

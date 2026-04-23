@@ -7,8 +7,8 @@ GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
 
 # Store location — OFS Downtown San Jose headquarters
 STORE_LOCATION = {
-    "lat": 37.3352,
-    "lng": -121.8811,
+    "lat": 37.33305461799275,
+    "lng": -121.89068999114191,
     "address": "123 S Market St, San Jose, CA 95113",
 }
 
