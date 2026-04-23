@@ -55,3 +55,21 @@ export function validateAddress({ line1 = '', city = '', state = '', zipCode = '
 
   return { errors, serviceAreaWarning, isValid: Object.keys(errors).length === 0 };
 }
+
+/**
+ * Geocode a formatted address string via the Google Maps Geocoding API.
+ * Returns { lat, lng } on success, or null if the address cannot be resolved.
+ *
+ * @param {string} formattedAddress
+ * @returns {Promise<{ lat: number, lng: number } | null>}
+ */
+export async function geocodeToCoords(formattedAddress) {
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || (typeof window !== 'undefined' && window.GOOGLE_MAPS_API_KEY) || '';
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(formattedAddress)}&key=${encodeURIComponent(apiKey)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Geocoding request failed.');
+  const data = await res.json();
+  if (data.status !== 'OK' || !Array.isArray(data.results) || data.results.length === 0) return null;
+  const loc = data.results[0].geometry.location;
+  return { lat: loc.lat, lng: loc.lng };
+}

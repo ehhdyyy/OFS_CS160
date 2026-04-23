@@ -97,6 +97,8 @@ CREATE TABLE orders (
     user_id          INT NOT NULL,
     delivery_id      INT NULL,
     delivery_address VARCHAR(255) NOT NULL,
+    delivery_latitude  DECIMAL(10, 7) NULL,
+    delivery_longitude DECIMAL(10, 7) NULL,
     delivery_fee     DECIMAL(6, 2) NOT NULL DEFAULT 0.00,
     total_price      DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
     total_weight     DECIMAL(8, 2) NOT NULL DEFAULT 0.00,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { validateAddress } from '../../utils/validateAddress';
+import { validateAddress, geocodeToCoords } from '../../utils/validateAddress';
 
 const API_BASE = 'http://localhost:8000';
 
@@ -26,16 +26,15 @@ function hasSavedPaymentMethods(methods) {
   return Array.isArray(methods) && methods.length > 0;
 }
 
-async function geocodeToCoords(formattedAddress) {
-  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || (typeof window !== 'undefined' && window.GOOGLE_MAPS_API_KEY) || '';
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(formattedAddress)}&key=${encodeURIComponent(apiKey)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('Geocoding request failed.');
-  const data = await res.json();
-  if (data.status !== 'OK' || !Array.isArray(data.results) || data.results.length === 0) return null;
-  const loc = data.results[0].geometry.location;
-  return { lat: loc.lat, lng: loc.lng };
+function addressesEqual(a, b) {
+  const normalize = (addr = {}) =>
+    [addr.line1, addr.line2, addr.city, addr.state, addr.zipCode, addr.country]
+      .map((value) => String(value || '').trim().toLowerCase())
+      .join('|');
+  return normalize(a) === normalize(b);
 }
+
+
 
 export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, deliveryFee, finalTotal, onConfirmPayment }) {
   /**
@@ -55,15 +54,13 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [savedShipping, setSavedShipping] = useState(null);
 
-  // Billing — billingView drives the sub-UI within the billing step
-  // null = "same as shipping?" question
-  // 'confirm-saved' = show saved billing for approval
-  // 'manual' = manual structured fields
+  // Billing — options screen or manual entry
   const [billingFields, setBillingFields] = useState({ street: '', apt: '', city: '', state: '', zip: '', country: 'US' });
   const [billingErrors, setBillingErrors] = useState({ street: '', city: '', state: '', zip: '', country: '' });
   const [billingServiceWarning, setBillingServiceWarning] = useState('');
-  const [billingView, setBillingView] = useState(null);
+  const [billingView, setBillingView] = useState('options');
   const [savedBilling, setSavedBilling] = useState(null);
+  const [billingChoice, setBillingChoice] = useState('delivery');
 
   // Payment
   const [savedPaymentMethods, setSavedPaymentMethods] = useState([]);
@@ -89,7 +86,8 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
     setBillingFields({ street: '', apt: '', city: '', state: '', zip: '', country: 'US' });
     setBillingErrors({ street: '', city: '', state: '', zip: '', country: '' });
     setBillingServiceWarning('');
-    setBillingView(null);
+    setBillingView('options');
+    setBillingChoice('delivery');
     setError('');
     setSavedShipping(null);
     setSavedBilling(null);
@@ -128,7 +126,8 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
 
   function goToBilling() {
     setError('');
-    setBillingView(null);   // always start billing from the "same as shipping?" question
+    setBillingView('options');
+    setBillingChoice('delivery');
     setStep('billing');
   }
 
@@ -254,6 +253,34 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
     goToBilling();
   }
 
+  function selectSameAsDelivery() {
+    setBillingFields({
+      street: deliveryFields.line1 || '',
+      apt: deliveryFields.line2 || '',
+      city: deliveryFields.city || '',
+      state: deliveryFields.state || '',
+      zip: deliveryFields.zipCode || '',
+      country: deliveryFields.country || 'US',
+    });
+    setBillingErrors({ street: '', city: '', state: '', zip: '', country: '' });
+    setBillingServiceWarning('');
+    goToPaymentStep();
+  }
+
+  function selectSavedBilling() {
+    setBillingFields({
+      street: savedBilling?.line1 || '',
+      apt: savedBilling?.line2 || '',
+      city: savedBilling?.city || '',
+      state: savedBilling?.state || '',
+      zip: savedBilling?.zipCode || '',
+      country: savedBilling?.country || 'US',
+    });
+    setBillingErrors({ street: '', city: '', state: '', zip: '', country: '' });
+    setBillingServiceWarning('');
+    goToPaymentStep();
+  }
+
   function handleBillingManualNext(e) {
     e.preventDefault();
     const { errors: vErrs, serviceAreaWarning, isValid } = validateAddress({
@@ -285,8 +312,8 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
       setError('Please choose a saved card or use a one-time card.');
       return;
     }
-    if (step === 'confirm-payment' && savedCardCvv.length < 3) {
-      setError('Please enter your card CVV.');
+    if (step === 'confirm-payment' && savedCardCvv.length !== 3) {
+      setError('Please enter a valid 3-digit CVV.');
       return;
     }
     const formattedAddr = formatAddress(deliveryFields).trim();
@@ -310,7 +337,7 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
     if (!cardName.trim())         { setError('Enter the name on card.'); return; }
     if (cleanCard.length !== 16)  { setError('Enter a valid 16-digit card number.'); return; }
     if (expiry.length !== 5)      { setError('Enter a valid expiry (MM/YY).'); return; }
-    if (cvv.length < 3)           { setError('Enter a valid CVV.'); return; }
+    if (cvv.length !== 3)          { setError('Enter a valid 3-digit CVV.'); return; }
     await submitOrder();
   }
 
@@ -329,6 +356,7 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
   const paymentState  = onPaymentStep  ? 'active' : '';
 
   const formattedDeliveryAddress = formatAddress(deliveryFields);
+  const savedBillingMatchesDelivery = hasAddress(savedBilling) && addressesEqual(savedBilling, deliveryFields);
 
   return (
     <div className="checkout-overlay" onClick={handleClose}>
@@ -494,34 +522,60 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
             <div className="checkout-section">
               <h3>Billing Address</h3>
 
-              {/* 2a — "Same as shipping?" question */}
-              {billingView === null && (
+              {billingView === 'options' && (
                 <>
-                  <div className="checkout-saved-address-card">
-                    <p className="checkout-saved-address-label">Is your billing address the same as your delivery address?</p>
-                    <p className="checkout-saved-address-value">{formattedDeliveryAddress}</p>
+                  <div className="checkout-saved-methods">
+                    <label className="checkout-saved-method-card">
+                      <input
+                        type="radio"
+                        name="billing-choice"
+                        checked={billingChoice === 'delivery'}
+                        onChange={() => setBillingChoice('delivery')}
+                      />
+                      <div>
+                        <p className="checkout-saved-address-label">Use delivery address</p>
+                        <p className="checkout-saved-address-value">{formattedDeliveryAddress}</p>
+                      </div>
+                    </label>
+                    {hasAddress(savedBilling) && !savedBillingMatchesDelivery && (
+                      <label className="checkout-saved-method-card">
+                        <input
+                          type="radio"
+                          name="billing-choice"
+                          checked={billingChoice === 'saved'}
+                          onChange={() => setBillingChoice('saved')}
+                        />
+                        <div>
+                          <p className="checkout-saved-address-label">Use saved billing address</p>
+                          <p className="checkout-saved-address-value">{formatAddress(savedBilling)}</p>
+                        </div>
+                      </label>
+                    )}
                   </div>
+                  {error && <p className="checkout-error">{error}</p>}
                   <div className="checkout-btn-row">
                     <button
                       type="button"
                       className="checkout-back-btn"
                       onClick={() => {
                         setError('');
-                        if (hasAddress(savedBilling)) {
-                          setBillingView('confirm-saved');
-                        } else {
-                          setBillingView('manual');
-                        }
+                        setBillingView('manual');
                       }}
                     >
-                      No, use different address
+                      Enter different billing address
                     </button>
                     <button
                       type="button"
                       className="checkout-pay-btn"
-                      onClick={() => goToPaymentStep()}
+                      onClick={() => {
+                        if (billingChoice === 'saved' && hasAddress(savedBilling) && !savedBillingMatchesDelivery) {
+                          selectSavedBilling();
+                          return;
+                        }
+                        selectSameAsDelivery();
+                      }}
                     >
-                      Yes, same address
+                      Continue
                     </button>
                   </div>
                   <div className="checkout-billing-back-row">
@@ -532,35 +586,7 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
                 </>
               )}
 
-              {/* 2b — Confirm saved billing address */}
-              {billingView === 'confirm-saved' && savedBilling && (
-                <>
-                  <div className="checkout-saved-address-card">
-                    <p className="checkout-saved-address-label">Use your saved billing address?</p>
-                    <p className="checkout-saved-address-value">{formatAddress(savedBilling)}</p>
-                  </div>
-                  {error && <p className="checkout-error">{error}</p>}
-                  <div className="checkout-btn-row">
-                    <button type="button" className="checkout-back-btn" onClick={() => { setError(''); setBillingView('manual'); }}>
-                      Enter a different address
-                    </button>
-                    <button
-                      type="button"
-                      className="checkout-pay-btn"
-                      onClick={() => goToPaymentStep()}
-                    >
-                      Yes, use this address
-                    </button>
-                  </div>
-                  <div className="checkout-billing-back-row">
-                    <button type="button" className="checkout-text-btn" onClick={() => { setError(''); setBillingView(null); }}>
-                      ← Back
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {/* 2c — Manual billing address fields */}
+              {/* 2b — Manual billing address fields */}
               {billingView === 'manual' && (
                 <form onSubmit={handleBillingManualNext}>
                   <div className="checkout-field">
@@ -643,7 +669,7 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
                         setError('');
                         setBillingErrors({ street: '', city: '', state: '', zip: '', country: '' });
                         setBillingServiceWarning('');
-                        setBillingView(hasAddress(savedBilling) ? 'confirm-saved' : null);
+                        setBillingView('options');
                       }}
                     >
                       ← Back
@@ -690,8 +716,8 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
                   type="password"
                   placeholder="123"
                   value={savedCardCvv}
-                  onChange={(e) => setSavedCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  maxLength={4}
+                  onChange={(e) => setSavedCardCvv(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                  maxLength={3}
                   disabled={isProcessing}
                   autoComplete="off"
                 />

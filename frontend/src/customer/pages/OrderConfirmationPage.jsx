@@ -1,7 +1,7 @@
 import '../styles/orderConfirmation.css';
 
 export default function OrderConfirmationPage({ order, onContinueShopping }) {
-  const subtotal = order.total_price - order.delivery_fee;
+  const subtotal = order.subtotal != null ? order.subtotal : order.total_price - order.delivery_fee;
   const isInTransit = order.status === 'out_for_delivery';
   const subtitle = isInTransit
     ? `${order.robot_label || 'Your robot'} is on the way with your order.`

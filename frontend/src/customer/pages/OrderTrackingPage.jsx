@@ -4,18 +4,18 @@ import '../styles/orderTrackingPage.css';
 
 const API_BASE = 'http://localhost:8000';
 
-const robotIcon = L.icon({
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
+const robotIcon = L.divIcon({
+  html: '<div style="width:14px;height:14px;background:#3b82f6;border:2px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.4)"></div>',
+  className: '',
+  iconSize: [14, 14],
+  iconAnchor: [7, 7],
 });
 
-const destinationIcon = L.icon({
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
+const destinationIcon = L.divIcon({
+  html: '<div style="width:14px;height:14px;background:#ef4444;border:2px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.4)"></div>',
+  className: '',
+  iconSize: [14, 14],
+  iconAnchor: [7, 7],
 });
 
 function formatDate(dateStr) {
@@ -32,6 +32,13 @@ function formatDate(dateStr) {
 }
 
 function getTimeline(status) {
+  if (status === 'failed') {
+    return [
+      { key: 'processing', label: 'Preparing', complete: true, current: false },
+      { key: 'failed', label: 'Failed', complete: false, current: true },
+    ];
+  }
+
   const steps = [
     { key: 'processing', label: 'Preparing' },
     { key: 'out_for_delivery', label: 'Out for delivery' },
@@ -132,7 +139,7 @@ export default function OrderTrackingPage({ orderId, onBack }) {
     if (status.status === 'delivered' || status.status === 'failed') return;
 
     const timer = window.setInterval(() => {
-      loadOrder(true);
+      if (!isRefreshing) loadOrder(true);
     }, 15000);
 
     return () => window.clearInterval(timer);
