@@ -168,7 +168,6 @@ export default function OrderTrackingPage({ orderId, onBack }) {
     if (location?.current_location?.lat != null && location?.current_location?.lng != null) {
       return [Number(location.current_location.lat), Number(location.current_location.lng)];
     }
-    return [37.3330375564865, -121.89059343162731];
   }, [location]);
 
 
@@ -206,13 +205,6 @@ export default function OrderTrackingPage({ orderId, onBack }) {
     if (polylineRef.current) {
       polylineRef.current.remove();
       polylineRef.current = null;
-    }
-
-    if (destination) {
-      polylineRef.current = L.polyline([robotPosition, destination]).addTo(map);
-      map.fitBounds(L.latLngBounds([robotPosition, destination]), { padding: [40, 40] });
-    } else {
-      map.setView(robotPosition, 15);
     }
 
     return () => {};
