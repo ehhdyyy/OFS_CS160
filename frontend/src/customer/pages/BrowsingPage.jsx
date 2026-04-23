@@ -149,7 +149,7 @@ export default function BrowsingPage({ cart, addToCart, changeQuantity, onChecko
       const searchTerm = filters.search.toLowerCase();
 
       const matchesSearch = productName.includes(searchTerm);
-      const matchesCategory = filters.category.length === 0 || filters.category.includes(product.category);
+      const matchesCategory = filters.category.length === 0 || filters.category.map((c) => c.toLowerCase()).includes((product.category || '').toLowerCase());
       const matchesAvailability =
         filters.availability === 'all' ||
         (filters.availability === 'stocked' && Boolean(product.is_available));
@@ -230,7 +230,7 @@ const weightTotal = useMemo(() => (
         <aside className="customer-filter-panel" id="browse-filters">
           <div className="customer-filter-section customer-filter-section-intro">
             <h2 className="customer-section-title">Filters</h2>
-            <p className="customer-helper-text">Quickly browse products by through various filters.</p>
+            <p className="customer-helper-text">Quickly browse products through various filters.</p>
           </div>
 
           <div className="customer-filter-section">
@@ -535,12 +535,12 @@ const weightTotal = useMemo(() => (
                         <span className="info-icon">
                           i
                           <span className="tooltip">
-                            Delivery fee applies when total weight exceed 20 lbs.
+                            Delivery fee applies when total weight exceeds 20 lbs.
                           </span>
                         </span>
                       </span>
                       <strong>
-                          {deliveryFee == 0 ? "Free" : `$${deliveryFee}`}
+                          {deliveryFee === 0 ? "Free" : `$${deliveryFee.toFixed(2)}`}
                       </strong>
                     </div>
 
@@ -557,7 +557,7 @@ const weightTotal = useMemo(() => (
           </div>
         ) : null}
 
-        <aside className="customer-cart-panel" id="browse-cart">
+        <aside className="customer-cart-panel" id="browse-cart" aria-hidden={isCartExpanded}>
           <div className="customer-cart-header">
             <h2>Cart</h2>
             <div className="customer-cart-header-actions">
@@ -627,7 +627,7 @@ const weightTotal = useMemo(() => (
                     <span className="info-icon">
                       i
                       <span className="tooltip">
-                        Delivery fee applies when total weight exceed 20 lbs.
+                        Delivery fee applies when total weight exceeds 20 lbs.
                       </span>
                     </span>
                   </span>

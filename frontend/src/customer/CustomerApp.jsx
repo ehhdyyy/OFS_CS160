@@ -28,12 +28,12 @@ export default function CustomerApp() {
         credentials: 'include',
       });
 
-      const data = await response.json();
-
       if (response.status === 401) {
         handleUnauthorized();
         return;
       }
+
+      const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.message || `Failed to load cart (${response.status})`);
@@ -60,12 +60,12 @@ export default function CustomerApp() {
         }),
       });
 
-      const data = await response.json();
-
       if (response.status === 401) {
         handleUnauthorized();
         return false;
       }
+
+      const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.detail || `Failed to add item (${response.status})`);
@@ -92,12 +92,12 @@ export default function CustomerApp() {
           credentials: 'include',
         });
 
-        const data = await response.json();
-
         if (response.status === 401) {
           handleUnauthorized();
           return;
         }
+
+        const data = await response.json();
 
         if (!response.ok) {
           throw new Error(data.detail || `Failed to remove item (${response.status})`);
@@ -114,12 +114,12 @@ export default function CustomerApp() {
         body: JSON.stringify({ quantity: newQty }),
       });
 
-      const data = await response.json();
-
       if (response.status === 401) {
         handleUnauthorized();
         return;
       }
+
+      const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.detail || `Failed to update item (${response.status})`);

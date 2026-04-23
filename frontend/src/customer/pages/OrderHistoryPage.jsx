@@ -123,7 +123,7 @@ export default function OrderHistoryPage({ onBack }) {
                     <StatusBadge status={order.status} />
                   </div>
                   <div className="order-card-right">
-                    <span className="order-total">${order.total_price.toFixed(2)}</span>
+                    <span className="order-total">${Number(order.total_price || 0).toFixed(2)}</span>
                     <span className="order-date">{formatDate(order.created_at)}</span>
                     <span className={`order-chevron ${isExpanded ? 'rotated' : ''}`}>▸</span>
                   </div>
@@ -181,7 +181,7 @@ export default function OrderHistoryPage({ onBack }) {
                     <div className="order-summary-row">
                       <div className="summary-line">
                         <span>Subtotal</span>
-                        <span>${order.subtotal.toFixed(2)}</span>
+                        <span>${Number(order.subtotal || 0).toFixed(2)}</span>
                       </div>
                       <div className="summary-line">
                         <span>Delivery Fee</span>

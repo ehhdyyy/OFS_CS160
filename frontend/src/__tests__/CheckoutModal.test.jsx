@@ -333,9 +333,9 @@ describe('CheckoutModal — delivery address step', () => {
       fillAddress();
       clickContinue();
 
-      // Step 2: billing — same as shipping
-      await screen.findByText(/is your billing address/i);
-      fireEvent.click(screen.getByRole('button', { name: 'Yes, same address' }));
+      // Step 2: billing — "Use delivery address" radio is pre-selected, click Continue
+      await screen.findByText('Billing Address');
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
       // Step 3: payment (no saved cards → manual card form)
       await screen.findByText('Payment Details');
