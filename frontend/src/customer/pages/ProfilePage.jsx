@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getStoredName, getStoredEmail, getStoredRole, persistFrontendSession, clearFrontendSession } from '../../utils/authSession';
-import { validateAddress } from '../../utils/validateAddress';
+import { validateAddress, geocodeToCoords } from '../../utils/validateAddress';
 
 const API_BASE = 'http://localhost:8000';
 
@@ -76,7 +76,7 @@ function PersonalInfoSection({ initialName, initialEmail, role }) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ name: name.trim(), email: email.trim() }),
+        body: JSON.stringify({ name: name.trim(), email: initialEmail }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || 'Failed to save');
@@ -189,6 +189,8 @@ function ShippingAddressSection({ initial, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState(null);
   const hasEditedRef = useRef(false);
+  const onSavedRef = useRef(onSaved);
+  useEffect(() => { onSavedRef.current = onSaved; });
 
   useEffect(() => {
     setFields(normalizeAddress(initial));
@@ -230,6 +232,15 @@ function ShippingAddressSection({ initial, onSaved }) {
 
       setSaving(true);
       try {
+        const formattedAddress = [fields.line1, fields.line2, fields.city, fields.state, fields.zipCode, fields.country]
+          .map(s => (s || '').trim()).filter(Boolean).join(', ');
+        const coords = await geocodeToCoords(formattedAddress);
+        if (!coords) {
+          setStatus({ ok: false, text: 'Address could not be verified. Please check your address.' });
+          setSaving(false);
+          return;
+        }
+
         const res = await fetch(`${API_BASE}/api/profile/shipping-address`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -239,7 +250,7 @@ function ShippingAddressSection({ initial, onSaved }) {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || 'Failed to save shipping address');
         setStatus({ ok: true, text: 'Shipping address saved automatically.' });
-        onSaved?.(fields);
+        onSavedRef.current?.(fields);
       } catch (err) {
         setStatus({ ok: false, text: err.message });
       } finally {
@@ -248,7 +259,7 @@ function ShippingAddressSection({ initial, onSaved }) {
     }, 700);
 
     return () => window.clearTimeout(timeoutId);
-  }, [fields, onSaved]);
+  }, [fields]);
 
   return (
     <SectionCard title="Shipping Address">
@@ -360,6 +371,15 @@ function BillingAddressSection({ initial, shippingAddress, onSaved }) {
 
     setSaving(true);
     try {
+      const formattedAddress = [fields.line1, fields.line2, fields.city, fields.state, fields.zipCode, fields.country]
+        .map(s => (s || '').trim()).filter(Boolean).join(', ');
+      const coords = await geocodeToCoords(formattedAddress);
+      if (!coords) {
+        setStatus({ ok: false, text: 'Address could not be verified. Please check your address.' });
+        setSaving(false);
+        return;
+      }
+
       const res = await fetch(`${API_BASE}/api/profile/billing-address`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -394,6 +414,14 @@ function BillingAddressSection({ initial, shippingAddress, onSaved }) {
               setSaving(true);
               setStatus(null);
               try {
+                const formattedAddress = [shipping.line1, shipping.line2, shipping.city, shipping.state, shipping.zipCode, shipping.country]
+                  .map(s => (s || '').trim()).filter(Boolean).join(', ');
+                const coords = await geocodeToCoords(formattedAddress);
+                if (!coords) {
+                  setStatus({ ok: false, text: 'Shipping address could not be verified. Please check it on the shipping form.' });
+                  setSaving(false);
+                  return;
+                }
                 const res = await fetch(`${API_BASE}/api/profile/billing-address`, {
                   method: 'PUT',
                   headers: { 'Content-Type': 'application/json' },

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { validateAddress } from '../../utils/validateAddress';
+import { validateAddress, geocodeToCoords } from '../../utils/validateAddress';
 
 const API_BASE = 'http://localhost:8000';
 
@@ -34,16 +34,7 @@ function addressesEqual(a, b) {
   return normalize(a) === normalize(b);
 }
 
-async function geocodeToCoords(formattedAddress) {
-  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || (typeof window !== 'undefined' && window.GOOGLE_MAPS_API_KEY) || '';
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(formattedAddress)}&key=${encodeURIComponent(apiKey)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('Geocoding request failed.');
-  const data = await res.json();
-  if (data.status !== 'OK' || !Array.isArray(data.results) || data.results.length === 0) return null;
-  const loc = data.results[0].geometry.location;
-  return { lat: loc.lat, lng: loc.lng };
-}
+
 
 export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, deliveryFee, finalTotal, onConfirmPayment }) {
   /**
@@ -321,8 +312,8 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
       setError('Please choose a saved card or use a one-time card.');
       return;
     }
-    if (step === 'confirm-payment' && savedCardCvv.length < 3) {
-      setError('Please enter your card CVV.');
+    if (step === 'confirm-payment' && savedCardCvv.length !== 3) {
+      setError('Please enter a valid 3-digit CVV.');
       return;
     }
     const formattedAddr = formatAddress(deliveryFields).trim();
@@ -346,7 +337,7 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
     if (!cardName.trim())         { setError('Enter the name on card.'); return; }
     if (cleanCard.length !== 16)  { setError('Enter a valid 16-digit card number.'); return; }
     if (expiry.length !== 5)      { setError('Enter a valid expiry (MM/YY).'); return; }
-    if (cvv.length < 3)           { setError('Enter a valid CVV.'); return; }
+    if (cvv.length !== 3)          { setError('Enter a valid 3-digit CVV.'); return; }
     await submitOrder();
   }
 
@@ -725,8 +716,8 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
                   type="password"
                   placeholder="123"
                   value={savedCardCvv}
-                  onChange={(e) => setSavedCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  maxLength={4}
+                  onChange={(e) => setSavedCardCvv(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                  maxLength={3}
                   disabled={isProcessing}
                   autoComplete="off"
                 />
@@ -795,8 +786,8 @@ export default function CheckoutModal({ isOpen, onClose, cart, cartTotal, delive
                     type="text"
                     placeholder="123"
                     value={cvv}
-                    onChange={(e) => setCvv(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                    maxLength={4}
+                    onChange={(e) => setCvv(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                    maxLength={3}
                     disabled={isProcessing}
                   />
                 </div>

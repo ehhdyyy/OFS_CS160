@@ -49,7 +49,7 @@ function getCustomerStockStatus(product) {
   return { tone: 'in-stock', label: 'In Stock' };
 }
 
-export default function ProductDetailPage({ productId, cart, addToCart, changeQuantity }) {
+export default function ProductDetailPage({ productId, cart, addToCart }) {
   const [product, setProduct] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');

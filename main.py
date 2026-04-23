@@ -64,8 +64,10 @@ FREE_DELIVERY_MAX_WEIGHT_LBS = Decimal("20.00")
 HEAVY_ORDER_DELIVERY_FEE = Decimal("10.00")
 MAX_ROBOT_ROUTE_ORDERS = 10
 MAX_ROBOT_ROUTE_WEIGHT_LBS = Decimal("200.00")
-SEVEN_DAY_WINDOW_START = datetime.date(2026, 3, 30)
-SEVEN_DAY_WINDOW_END = datetime.date(2026, 4, 5)
+def get_seven_day_window() -> tuple[datetime.date, datetime.date]:
+    end = datetime.date.today()
+    start = end - datetime.timedelta(days=6)
+    return start, end
 
 ALLOWED_SORT_COLUMNS = {
     "id": "p.id",
@@ -2045,10 +2047,7 @@ def get_admin_dashboard(
                 ORDER BY day_key ASC
                 """
             ),
-            {
-                "start_date": SEVEN_DAY_WINDOW_START,
-                "end_date": SEVEN_DAY_WINDOW_END,
-            },
+            dict(zip(("start_date", "end_date"), get_seven_day_window())),
         ).mappings().all()
 
         recent_orders = db.execute(
@@ -2878,10 +2877,7 @@ def get_admin_financial(
                 ORDER BY days.day_key ASC
                 """
             ),
-            {
-                "start_date": SEVEN_DAY_WINDOW_START,
-                "end_date": SEVEN_DAY_WINDOW_END,
-            },
+            dict(zip(("start_date", "end_date"), get_seven_day_window())),
         ).mappings().all()
 
         points = []
