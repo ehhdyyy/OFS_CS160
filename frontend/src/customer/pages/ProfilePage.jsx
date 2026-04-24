@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { getStoredName, getStoredEmail, getStoredRole, persistFrontendSession, clearFrontendSession } from '../../utils/authSession';
 import { validateAddress, geocodeToCoords } from '../../utils/validateAddress';
 
 const API_BASE = 'http://localhost:8000';
+
+const SERVICE_LAT_MIN = 37.32, SERVICE_LAT_MAX = 37.35;
+const SERVICE_LNG_MIN = -121.91, SERVICE_LNG_MAX = -121.86;
 
 function roleLabel(role = '') {
   const normalized = String(role || '').trim().toLowerCase();
@@ -188,85 +191,71 @@ function ShippingAddressSection({ initial, onSaved }) {
   const [fieldErrors, setFieldErrors] = useState({ line1: '', city: '', state: '', zipCode: '', country: '' });
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState(null);
-  const hasEditedRef = useRef(false);
-  const onSavedRef = useRef(onSaved);
-  useEffect(() => { onSavedRef.current = onSaved; });
 
   useEffect(() => {
     setFields(normalizeAddress(initial));
   }, [initial]);
 
   function set(key) {
-    return (e) => {
-      hasEditedRef.current = true;
-      setFields((prev) => ({ ...prev, [key]: e.target.value }));
-    };
+    return (e) => setFields((prev) => ({ ...prev, [key]: e.target.value }));
   }
 
-  useEffect(() => {
-    if (!hasEditedRef.current) return;
+  async function handleSave(e) {
+    e.preventDefault();
+    setStatus(null);
+    const { errors, serviceAreaWarning, isValid } = validateAddress(fields);
+    setFieldErrors({
+      line1: errors.line1 || '',
+      city: errors.city || '',
+      state: errors.state || '',
+      zipCode: errors.zipCode || '',
+      country: errors.country || '',
+    });
+    if (!isValid) return;
+    if (serviceAreaWarning) {
+      setStatus({ ok: false, text: serviceAreaWarning });
+      return;
+    }
 
-    const timeoutId = window.setTimeout(async () => {
-      const { errors, serviceAreaWarning, isValid } = validateAddress(fields);
-      setFieldErrors({
-        line1: errors.line1 || '',
-        city: errors.city || '',
-        state: errors.state || '',
-        zipCode: errors.zipCode || '',
-        country: errors.country || '',
-      });
-
-      const isComplete = fields.line1.trim() && fields.city.trim() && fields.state.trim() && fields.zipCode.trim() && fields.country.trim();
-      if (!isComplete) {
-        setStatus(null);
-        return;
-      }
-      if (!isValid) {
-        setStatus({ ok: false, text: 'Enter a complete shipping address to save it.' });
-        return;
-      }
-      if (serviceAreaWarning) {
-        setStatus({ ok: false, text: serviceAreaWarning });
-        return;
-      }
-
-      setSaving(true);
-      try {
-        const formattedAddress = [fields.line1, fields.line2, fields.city, fields.state, fields.zipCode, fields.country]
-          .map(s => (s || '').trim()).filter(Boolean).join(', ');
-        const coords = await geocodeToCoords(formattedAddress);
-        if (!coords) {
-          setStatus({ ok: false, text: 'Address could not be verified. Please check your address.' });
-          setSaving(false);
-          return;
-        }
-
-        const res = await fetch(`${API_BASE}/api/profile/shipping-address`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(addressRequestPayload(fields)),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.detail || 'Failed to save shipping address');
-        setStatus({ ok: true, text: 'Shipping address saved automatically.' });
-        onSavedRef.current?.(fields);
-      } catch (err) {
-        setStatus({ ok: false, text: err.message });
-      } finally {
+    setSaving(true);
+    try {
+      const formattedAddress = [fields.line1, fields.line2, fields.city, fields.state, fields.zipCode, fields.country]
+        .map(s => (s || '').trim()).filter(Boolean).join(', ');
+      const coords = await geocodeToCoords(formattedAddress);
+      if (!coords) {
+        setStatus({ ok: false, text: 'Address could not be verified. Please enter a valid address.' });
         setSaving(false);
+        return;
       }
-    }, 700);
+      if (
+        coords.lat < SERVICE_LAT_MIN || coords.lat > SERVICE_LAT_MAX ||
+        coords.lng < SERVICE_LNG_MIN || coords.lng > SERVICE_LNG_MAX
+      ) {
+        setStatus({ ok: false, text: 'Address is outside our delivery area. We currently only deliver within Downtown San Jose, CA.' });
+        setSaving(false);
+        return;
+      }
 
-    return () => window.clearTimeout(timeoutId);
-  }, [fields]);
+      const res = await fetch(`${API_BASE}/api/profile/shipping-address`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(addressRequestPayload(fields)),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'Failed to save shipping address');
+      setStatus({ ok: true, text: 'Shipping address saved.' });
+      onSaved?.(fields);
+    } catch (err) {
+      setStatus({ ok: false, text: err.message });
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <SectionCard title="Shipping Address">
-      <p className="profile-helper-text">
-        This saves automatically after you finish typing a valid address.
-      </p>
-      <form className="profile-form">
+      <form onSubmit={handleSave} className="profile-form">
       <div className="profile-form-row">
         <label className="profile-label" htmlFor="shipping-line1">Address Line 1 *</label>
         <input
@@ -332,7 +321,9 @@ function ShippingAddressSection({ initial, onSaved }) {
         </div>
       </div>
       <StatusMessage status={status} />
-      {saving ? <p className="profile-helper-text">Saving shipping address…</p> : null}
+      <button type="submit" className="profile-save-btn" disabled={saving}>
+        {saving ? 'Saving…' : 'Save Address'}
+      </button>
       </form>
     </SectionCard>
   );
@@ -355,7 +346,7 @@ function BillingAddressSection({ initial, shippingAddress, onSaved }) {
   async function handleSave(e) {
     e.preventDefault();
     setStatus(null);
-    const { errors, serviceAreaWarning, isValid } = validateAddress(fields);
+    const { errors, isValid } = validateAddress(fields);
     setFieldErrors({
       line1: errors.line1 || '',
       city: errors.city || '',
@@ -364,10 +355,6 @@ function BillingAddressSection({ initial, shippingAddress, onSaved }) {
       country: errors.country || '',
     });
     if (!isValid) return;
-    if (serviceAreaWarning) {
-      setStatus({ ok: false, text: serviceAreaWarning });
-      return;
-    }
 
     setSaving(true);
     try {
@@ -375,7 +362,7 @@ function BillingAddressSection({ initial, shippingAddress, onSaved }) {
         .map(s => (s || '').trim()).filter(Boolean).join(', ');
       const coords = await geocodeToCoords(formattedAddress);
       if (!coords) {
-        setStatus({ ok: false, text: 'Address could not be verified. Please check your address.' });
+        setStatus({ ok: false, text: 'Address could not be verified. Please enter a valid address.' });
         setSaving(false);
         return;
       }
