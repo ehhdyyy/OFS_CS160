@@ -20,184 +20,152 @@ The system consists of:
 
 ---
 
-# ⚙️ Prerequisites
+# 🗃️ Dockerized Setup
 
-Install the following before setup:
+This project is packaged with Docker so another user can run the application locally with minimal setup.
 
-### 1) Python
+## ⚙️ Prerequisites
+
+Install the following:
+
+- Docker Desktop
+- Git 
+- MySQL Workbench
+
+
+## 1. 📄 Clone the Repository
+
 ```bash
-python --version
-````
-
-### 2) Node.js
-
-```bash
-node -v
-npm -v
+git clone https://github.com/ehhdyyy/OFS_CS160.git
+cd OFS_CS160
 ```
+## 2. 🌳 Create the Root `.env` File
+Create a file name `.env` in the project root directory with the following:
 
-### 3) MySQL Server
-
-* Install MySQL Workbench
-
----
-
-# 🖥️ Backend Setup
-
-Open a terminal in the project root (where `main.py` is located).
-
-## Step 1 - Create virtual environment
-
-### Windows
-
+`.env.example`:
 ```bash
-python -m venv venv
-venv\Scripts\activate
-```
-
-### Mac/Linux
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
-## Step 2 - Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-## Step 3 - Create Root `.env` File
-
-Create a file named `.env` in the project root directory:
-
-```env
 DB_USER=root
 DB_PASSWORD=YOUR_MYSQL_PASSWORD
-DB_HOST=localhost
+DB_HOST=host.docker.internal
 DB_PORT=3306
 DB_NAME=ofs_db
-JWT_SECRET=change-me-in-env
 ```
+Replace `YOUR_MYSQL_PASSWORD` with your actual MYSQL password.
 
-Replace `YOUR_MYSQL_PASSWORD` with your actual MySQL password.
+## 3. 🖥️ Create the Frontend `.env` File
+Create a file name `.env` inside the `frontend` folder with the following:
 
-## Step 4 - Run Backend
-
+`.env.example`:
 ```bash
-uvicorn main:app --reload --port 8000
-```
-
-Backend runs at:
-`http://localhost:8000`
-
----
-
-# 🌐 Frontend Setup (React + Vite)
-
-Open a second terminal.
-
-## Step 1 - Install Dependencies
-
-```bash
-cd frontend
-npm install
-```
-
-## Step 2 - Create Frontend `.env` File
-
-Create a file named `.env` inside the `frontend` folder:
-
-```env
 VITE_API_BASE_URL=http://localhost:8000
 VITE_GOOGLE_MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
 ```
+Replace `YOUR_GOOGLE_MAPS_API_KEY` with your actual Google Maps API key.
 
-Replace `YOUR_GOOGLE_MAPS_API_KEY` with your Google Maps API key.
 
-## Step 3 - Run Dev Server
+## 4. 📊 Start MYSQL Server
+Make sure MYSQL server is running on your local machine.
 
-```bash
-npm run dev
+**Windows**
 ```
-
-Frontend runs at:
-`http://localhost:5173`
-
----
-
-# 🗄️ Database Setup
-
-## Step 1 - Start MySQL Server (Windows)
-
-Open Command Prompt as Administrator:
-
-```bash
-net start MySQL80
+net start MYSQL80
 ```
-
-or start from:
-
-```bash
-services.msc
-```
-
-Then find `MySQL80` and click **Start**.
-
-## Step 2 - Import Database Schema
+## 5. ⚡ Import Database Schema and Seed Data
 
 Using MySQL Workbench:
 
 1. Open Workbench
-2. Connect to your local instance
+2. Connect to your local MySQL instance
 3. Open `database/schema.sql`
-4. Click Execute
+4. Execute the script
+5. Open `database/seed.sql`
+6. Execute the script
 
-## Step 3 - Seed the Database
+## 6. ⬆️ Run the Application with Docker Compose
 
-Using MySQL Workbench:
-
-1. Open `database/seed.sql`
-2. Click Execute
-
----
-
-# ▶️ Running the Full Application
-
-You must run:
-
-### 1. MySQL server
-
-### 2. Backend
-
+From the project root directory, run:
 ```bash
+docker compose up --build
+```
+This will build and start:
+
+* the FastAPI backend
+* the React/Vite frontend
+
+## 7. ▶️ Open the Application
+
+Frontend:
+```
+http://localhost:5173
+```
+Backend:
+```
+http://localhost:8000
+```
+API Docs:
+```
+http://localhost:8000/docs
+```
+
+## 8. 🛑 Stop the Application
+
+In the same terminal, press:
+```
+Ctrl + C
+```
+To stop and remove containers, run:
+```
+docker compose down
+```
+
+# Project Structure
+OFS_CS160/   
+├── compose.yaml  
+├── Dockerfile  
+├── .env  
+├── main.py  
+├── requirements.txt  
+├── frontend/  
+│   ├── Dockerfile  
+│   ├── .env  
+│   ├── package.json  
+│   └── src/  
+└── database/  
+    ├── schema.sql  
+    └── seed.sql  
+
+## ✏️ Notes
+* Root `.env` is used by the backend container.
+* `frontend/.env` is used by the Vite frontend.
+* Frontend environment variables must start with `VITE_`.
+* If you change Dockerfiles, dependencies, or environment variables, rebuild with:
+```
+docker compose up --build
+```
+* If you only stop the app and want to restart it later:
+```
+docker compose up
+```
+
+## Optional: Manual Local Development Setup
+If you want to run without Docker, you can do so manually.
+
+### Setting up virtual environment:
+```bash
+python -m venv venv
+```
+
+### Backend:
+```bash
+venv\Scripts\activate
+pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
 
-### 3. Frontend
-
+### Frontend:
 ```bash
+venv\Scripts\activate
 cd frontend
+npm install
 npm run dev
-```
-
-Then open:
-
-```bash
-http://localhost:5173
-```
-
----
-
-# Notes
-
-* Root `.env` is for backend/server configuration.
-* `frontend/.env` is for Vite frontend configuration.
-* Frontend environment variables must start with `VITE_`.
-* Restart the frontend dev server after changing `frontend/.env`.
-* Restart the backend after changing the root `.env`.
-* Do not commit real secrets or unrestricted API keys to GitHub.
-
-```
 ```

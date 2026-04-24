@@ -271,7 +271,7 @@ export default function OrderTrackingPage({ orderId, onBack }) {
 
         <div className="tracking-grid">
           <section className="tracking-panel">
-            <h2>Live Map</h2>
+            <h2>Map</h2>
 
             {robotPosition ? (
               <div className="tracking-map-wrap">
