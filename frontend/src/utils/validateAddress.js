@@ -37,7 +37,7 @@ export function validateAddress({ line1 = '', city = '', state = '', zipCode = '
   const z = (zipCode || '').trim();
   if (!z) {
     errors.zipCode = 'ZIP / Postal Code is required.';
-  } else if (!/^\d{5}(-\d{4})?$/.test(z) && !/^[A-Z0-9]{3,10}$/i.test(z)) {
+  } else if (!/^\d{5}(-\d{4})?$/.test(z) && !/^(?=.*\d)[A-Z0-9 -]{3,10}$/i.test(z)) {
     errors.zipCode = 'Enter a valid ZIP / postal code (e.g., 95112 or 95112-3456).';
   }
 
@@ -70,6 +70,8 @@ export async function geocodeToCoords(formattedAddress) {
   if (!res.ok) throw new Error('Geocoding request failed.');
   const data = await res.json();
   if (data.status !== 'OK' || !Array.isArray(data.results) || data.results.length === 0) return null;
-  const loc = data.results[0].geometry.location;
+  const result = data.results[0];
+  if (result.partial_match) return null;
+  const loc = result.geometry.location;
   return { lat: loc.lat, lng: loc.lng };
 }
