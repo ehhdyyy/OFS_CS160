@@ -70,6 +70,26 @@ Make sure MYSQL server is running on your local machine.
 ```
 net start MYSQL80
 ```
+
+**macOS**
+
+If MySQL was installed with the official installer, start it from the MySQL preference pane / system settings if available.
+
+If MySQL was installed with Homebrew, you can start it with:
+```bash
+brew services start mysql
+```
+
+Or, depending on the version:
+```bash
+brew services start mysql@8.0
+```
+
+To verify MySQL is running:
+```bash
+mysqladmin -u root -p'YOUR_PASSWORD' ping
+```
+
 ## 5. ⚡ Import Database Schema and Seed Data
 
 Using MySQL Workbench:
