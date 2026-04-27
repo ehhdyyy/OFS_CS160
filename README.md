@@ -81,6 +81,13 @@ Using MySQL Workbench:
 5. Open `database/seed.sql`
 6. Execute the script
 
+Or via command line:
+
+```bash
+mysql -u root -p'YOUR_PASSWORD' < database/schema.sql
+mysql -u root -p'YOUR_PASSWORD' < database/seed.sql
+```
+
 ## 6. ⬆️ Run the Application with Docker Compose
 
 From the project root directory, run:
