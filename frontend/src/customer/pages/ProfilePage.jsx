@@ -645,7 +645,15 @@ function PaymentInfoSection({ initialMethods = [], onSaved }) {
         <form onSubmit={handleSave} className="profile-form">
           <div className="profile-form-row">
             <label className="profile-label" htmlFor="pay-name">Cardholder Name</label>
-            <input id="pay-name" className="profile-input" type="text" value={cardholderName} onChange={(e) => setCardholderName(e.target.value)} placeholder="Jane Smith" />
+            <input 
+              id="pay-name" 
+              className="profile-input" 
+              type="text" 
+              value={cardholderName} 
+              onChange={(e) => setCardholderName(e.target.value)} 
+              placeholder="Jane Smith"
+              maxLength={64} 
+              />
           </div>
           <div className="profile-form-row">
             <label className="profile-label" htmlFor="pay-number">Card Number</label>
