@@ -255,6 +255,13 @@ export default function LoginPage() {
         margin-bottom: 1.1rem;
       }
 
+      .field-help {
+        margin-top: 0.35rem;
+        font-size: 0.78rem;
+        color: var(--text-light);
+        text-align: right;
+      }
+
       .field label {
         display: block;
         font-size: 0.84rem;
@@ -266,6 +273,8 @@ export default function LoginPage() {
       .input-wrap {
         position: relative;
       }
+
+      
 
       .input-wrap input {
         width: 100%;
@@ -609,8 +618,12 @@ export default function LoginPage() {
                             value={name}
                             onChange={e => setName(e.target.value)}
                             required
+                            maxLength={64}
                           />
                           <span className="input-icon">👤</span>
+                        </div>
+                        <div className='field-help'>
+                          {name.length}/64 characters
                         </div>
                       </div>
                     )}
@@ -639,6 +652,7 @@ export default function LoginPage() {
                           value={email}
                           onChange={e => setEmail(e.target.value)}
                           required
+                          maxLength={254}
                         />
                         <span className="input-icon">👤</span>
                       </div>

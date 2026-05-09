@@ -552,7 +552,7 @@ const weightTotal = useMemo(() => (
                       <strong>${finalTotal.toFixed(2)}</strong>
                     </div>
 
-                    <button className="customer-checkout-btn" type="button" onClick={() => setShowCheckoutModal(true)}>Checkout</button>
+                    <button className="customer-checkout-btn" type="button" onClick={() => {setShowCheckoutModal(true); setIsCartExpanded(false)}}>Checkout</button>
                   </div>
                 </>
               )}
